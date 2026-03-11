@@ -1,0 +1,184 @@
+# UZMZ Utility Meter Dashboard
+# Add this configuration to your Home Assistant Lovelace dashboard
+
+title: Utility Meters
+path: utility-meters
+icon: mdi:gauge
+badges: []
+cards:
+  # Header Card
+  - type: markdown
+    content: |
+      # 🏠 Utility Meter Monitor
+      Real-time monitoring of your electric and water meters from USMS
+    
+  # Electric Meter Section
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## ⚡ Electric Meter
+      
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.uzmz_electric_remaining_units
+            name: Remaining Units
+            unit: kWh
+            severity:
+              green: 100
+              yellow: 50
+              red: 0
+            min: 0
+            max: 500
+            
+          - type: entity
+            entity: sensor.uzmz_electric_remaining_balance
+            name: Balance
+            icon: mdi:cash
+            
+      - type: entities
+        entities:
+          - entity: sensor.uzmz_electric_status
+            name: Status
+            icon: mdi:information-outline
+          - entity: sensor.uzmz_electric_last_updated
+            name: Last Updated
+            icon: mdi:update
+
+  # Water Meter Section
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## 💧 Water Meter
+      
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.uzmz_water_remaining_units
+            name: Remaining Units
+            unit: m³
+            severity:
+              green: 100
+              yellow: 50
+              red: 0
+            min: 0
+            max: 200
+            
+          - type: entity
+            entity: sensor.uzmz_water_remaining_balance
+            name: Balance
+            icon: mdi:cash
+            
+      - type: entities
+        entities:
+          - entity: sensor.uzmz_water_status
+            name: Status
+            icon: mdi:information-outline
+          - entity: sensor.uzmz_water_last_updated
+            name: Last Updated
+            icon: mdi:update
+
+  # Historical Data
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## 📊 Historical Data
+      
+      - type: history-graph
+        title: Electric Usage Trend
+        entities:
+          - sensor.uzmz_electric_remaining_units
+        hours_to_show: 168  # 7 days
+        
+      - type: history-graph
+        title: Water Usage Trend
+        entities:
+          - sensor.uzmz_water_remaining_units
+        hours_to_show: 168  # 7 days
+
+  # Statistics Card
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## 📈 Statistics
+      
+      - type: statistics-graph
+        title: Electric Units - Daily Average
+        entities:
+          - sensor.uzmz_electric_remaining_units
+        days_to_show: 30
+        stat_types:
+          - mean
+          - min
+          - max
+          
+      - type: statistics-graph
+        title: Water Units - Daily Average
+        entities:
+          - sensor.uzmz_water_remaining_units
+        days_to_show: 30
+        stat_types:
+          - mean
+          - min
+          - max
+
+  # Manual Refresh Button
+  - type: vertical-stack
+    cards:
+      - type: markdown
+        content: |
+          ## 🔄 Manual Controls
+      
+      - type: button
+        tap_action:
+          action: call-service
+          service: homeassistant.update_entity
+          service_data:
+            entity_id: 
+              - sensor.uzmz_electric_remaining_units
+              - sensor.uzmz_electric_remaining_balance
+              - sensor.uzmz_electric_status
+              - sensor.uzmz_electric_last_updated
+              - sensor.uzmz_water_remaining_units
+              - sensor.uzmz_water_remaining_balance
+              - sensor.uzmz_water_status
+              - sensor.uzmz_water_last_updated
+        name: Refresh All Meters
+        icon: mdi:refresh
+        icon_height: 40px
+        
+  # Alert Configuration Card
+  - type: markdown
+    content: |
+      ## 🔔 Automation Examples
+      
+      Add these automations to get notified about low balance:
+      
+      ```yaml
+      automation:
+        - alias: "Low Electric Balance Alert"
+          trigger:
+            platform: numeric_state
+            entity_id: sensor.uzmz_electric_remaining_balance
+            below: 20
+          action:
+            service: notify.mobile_app
+            data:
+              title: "Low Electric Balance"
+              message: "Your electric meter balance is below $20!"
+              
+        - alias: "Low Water Balance Alert"
+          trigger:
+            platform: numeric_state
+            entity_id: sensor.uzmz_water_remaining_balance
+            below: 20
+          action:
+            service: notify.mobile_app
+            data:
+              title: "Low Water Balance"
+              message: "Your water meter balance is below $20!"
+      ```
