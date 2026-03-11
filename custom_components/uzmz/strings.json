@@ -1,0 +1,72 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to UZMZ",
+        "description": "Enter your USMS account credentials to monitor your utility meters.",
+        "data": {
+          "ic_number": "IC Number",
+          "password": "Password",
+          "base_url": "Base URL",
+          "platform_version": "Platform Version (Optional)"
+        },
+        "data_description": {
+          "ic_number": "Your IC number used to login to USMS",
+          "password": "Your USMS account password",
+          "base_url": "The USMS website URL (default: https://www.usms.com.bn/SmartMeter/)",
+          "platform_version": "Optional: Specific platform version to check (e.g., 5.1.107)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to USMS website. Please check the URL and your internet connection.",
+      "invalid_auth": "Invalid authentication. Please check your IC number and password.",
+      "unknown": "Unexpected error occurred. Please check the logs for more information."
+    },
+    "abort": {
+      "already_configured": "This IC number is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UZMZ Options",
+        "description": "Configure how often to fetch meter data.",
+        "data": {
+          "scan_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "scan_interval": "How often to fetch meter data from USMS (minimum 300 seconds, maximum 86400 seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "electric_remaining_unit": {
+        "name": "Electric Remaining Units"
+      },
+      "electric_remaining_balance": {
+        "name": "Electric Remaining Balance"
+      },
+      "electric_status": {
+        "name": "Electric Meter Status"
+      },
+      "electric_last_updated": {
+        "name": "Electric Last Updated"
+      },
+      "water_remaining_unit": {
+        "name": "Water Remaining Units"
+      },
+      "water_remaining_balance": {
+        "name": "Water Remaining Balance"
+      },
+      "water_status": {
+        "name": "Water Meter Status"
+      },
+      "water_last_updated": {
+        "name": "Water Last Updated"
+      }
+    }
+  }
+}

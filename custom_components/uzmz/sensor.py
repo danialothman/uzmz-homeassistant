@@ -1,7 +1,9 @@
 """Sensor platform for UZMZ integration."""
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -48,8 +50,8 @@ async def async_setup_entry(
             "Electric Remaining Units",
             UNIT_KWH,
             ICON_ELECTRIC,
-            SensorDeviceClass.ENERGY,
-            SensorStateClass.MEASUREMENT,
+            None,
+            None,
         ),
         UZMZSensor(
             coordinator,
@@ -92,8 +94,8 @@ async def async_setup_entry(
             "Water Remaining Units",
             UNIT_CUBIC_METER,
             ICON_WATER,
-            SensorDeviceClass.WATER,
-            SensorStateClass.MEASUREMENT,
+            None,
+            None,
         ),
         UZMZSensor(
             coordinator,
@@ -171,16 +173,28 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
         # Clean and convert numeric values
         if self._sensor_type in ["remaining_unit", "remaining_balance"]:
             if value:
-                # Remove any non-numeric characters except decimal point
                 try:
-                    # Remove currency symbols, commas, and other non-numeric chars
-                    cleaned = "".join(c for c in str(value) if c.isdigit() or c == ".")
+                    cleaned = "".join(c for c in str(value) if c in "0123456789.")
                     return float(cleaned) if cleaned else 0.0
                 except (ValueError, TypeError):
                     _LOGGER.warning("Could not convert value to float: %s", value)
                     return 0.0
             return 0.0
-        
+
+        # Parse timestamp strings into datetime objects
+        if self._sensor_type == "last_updated" and value:
+            try:
+                # Try format with time: "11/03/2026 20:00:00"
+                dt = datetime.strptime(str(value), "%d/%m/%Y %H:%M:%S")
+            except ValueError:
+                try:
+                    # Try date only: "11/03/2026"
+                    dt = datetime.strptime(str(value), "%d/%m/%Y")
+                except ValueError:
+                    _LOGGER.warning("Could not parse timestamp: %s", value)
+                    return None
+            return dt.replace(tzinfo=ZoneInfo("Asia/Brunei"))
+
         return value
 
     @property
