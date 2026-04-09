@@ -14,6 +14,18 @@ views:
           # Utility Meter Monitor
           Real-time monitoring of your electric and water meters from USMS
 
+      # Connection Status Warning (shows only when unavailable)
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: sensor.uzmz_electric_meter_electric_remaining_units
+            state: unavailable
+        card:
+          type: markdown
+          content: |
+            ## ⚠️ Connection Issue
+            UZMZ is unable to reach the USMS website. The integration will keep retrying automatically. Check **Notifications** for details.
+
       # Electric Meter Section
       - type: vertical-stack
         cards:
@@ -96,9 +108,21 @@ views:
             hours_to_show: 168
 
           - type: history-graph
+            title: Electric Balance Trend
+            entities:
+              - sensor.uzmz_electric_meter_electric_remaining_balance
+            hours_to_show: 168
+
+          - type: history-graph
             title: Water Usage Trend
             entities:
               - sensor.uzmz_water_meter_water_remaining_units
+            hours_to_show: 168
+
+          - type: history-graph
+            title: Water Balance Trend
+            entities:
+              - sensor.uzmz_water_meter_water_remaining_balance
             hours_to_show: 168
 
       # Manual Refresh Button
