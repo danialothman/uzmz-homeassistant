@@ -1,0 +1,51 @@
+# CLAUDE.md
+
+## Project Overview
+
+UZMZ is a Home Assistant custom integration for monitoring utility meters (electric and water) from USMS (Utility Smart Meter System) in Brunei. It scrapes the USMS website to extract meter data and exposes it as HA sensors.
+
+## Project Structure
+
+```
+custom_components/uzmz/
+  __init__.py       - Integration entry point, setup/unload
+  config_flow.py    - UI configuration flow + options flow
+  const.py          - Constants, defaults, sensor definitions
+  coordinator.py    - Data update coordinator + USMS API client (web scraping)
+  sensor.py         - Sensor entity definitions (8 sensors: 4 electric, 4 water)
+  manifest.json     - Integration metadata
+  strings.json      - UI strings
+  translations/en.json - English translations
+lovelace-dashboard.yaml - Pre-configured dashboard
+```
+
+## Architecture
+
+- **Pattern**: HA Coordinator pattern (ConfigFlow -> Coordinator -> CoordinatorEntity)
+- **Data source**: Web scraping USMS website using `requests` + `BeautifulSoup4`
+- **Auth**: ASP.NET form-based auth with hidden fields (__VIEWSTATE, __EVENTVALIDATION)
+- **IoT class**: cloud_polling
+- **Domain**: `uzmz`
+
+## Key Technical Details
+
+- Sensors: remaining units (kWh/m3), balance (BND), status, last updated — for both electric and water
+- Timestamps use Asia/Brunei timezone
+- Scan interval configurable via options flow (300-86400 seconds, default 1 hour)
+- Unique ID per config entry is the IC number
+- Runtime dependency: `beautifulsoup4>=4.12.3`
+- No explicit HA version constraint, but tested with HA 2026.2
+
+## Development
+
+- No test suite, CI/CD, or build system
+- No `pyproject.toml` or `setup.py`
+- Testing is manual against a live HA instance
+- Debug logging: set `custom_components.uzmz: debug` in HA logger config
+
+## Commands
+
+No build/lint/test commands. To install locally:
+```bash
+cp -r custom_components/uzmz /path/to/ha/config/custom_components/
+```
