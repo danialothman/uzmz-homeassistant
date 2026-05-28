@@ -63,6 +63,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         self._consecutive_failures = 0
         self._consecutive_ambiguous_login = 0
         self._normal_update_interval = update_interval
+        self._notification_active = False
         self.last_successful_refresh: Optional[datetime] = None
         self.last_attempt_time: Optional[datetime] = None
 
@@ -86,15 +87,33 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_attempt_time = datetime.now(BRUNEI_TZ)
         try:
             data = await self.hass.async_add_executor_job(self._fetch_data)
-        except UpdateFailed:
+        except UpdateFailed as err:
             if self.update_interval != FAILURE_RETRY_INTERVAL:
                 _LOGGER.info(
                     "Switched to fast retry interval (%s) after failure",
                     FAILURE_RETRY_INTERVAL,
                 )
                 self.update_interval = FAILURE_RETRY_INTERVAL
+            # Persistent-notification calls must happen on the event loop, not
+            # the executor thread where _fetch_data runs. Do it here.
+            if self._consecutive_failures >= MAX_FAILURES_BEFORE_NOTIFY:
+                async_create(
+                    self.hass,
+                    (
+                        f"UZMZ has failed to update {self._consecutive_failures} times in a row.\n\n"
+                        f"**Reason:** {err}\n\n"
+                        "The integration will keep retrying automatically. "
+                        "If this persists, check your internet connection or the USMS website."
+                    ),
+                    title="UZMZ Utility Meter — Update Failure",
+                    notification_id=NOTIFICATION_ID,
+                )
+                self._notification_active = True
             raise
 
+        if self._notification_active:
+            async_dismiss(self.hass, NOTIFICATION_ID)
+            self._notification_active = False
         self.last_successful_refresh = datetime.now(BRUNEI_TZ)
         if self.update_interval != self._normal_update_interval:
             _LOGGER.info(
@@ -162,7 +181,8 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             # Format data for sensors
             formatted_data = self._format_meter_data(meter_data)
 
-            # Success — reset failure counters and dismiss any notification
+            # Success — reset failure counters. Notification dismissal is
+            # handled in _async_update_data (event loop) for thread safety.
             if self._consecutive_ambiguous_login > 0:
                 _LOGGER.info(
                     "Login recovered after %d ambiguous response(s); resetting counter",
@@ -175,7 +195,6 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                     self._consecutive_failures,
                 )
                 self._consecutive_failures = 0
-                async_dismiss(self.hass, NOTIFICATION_ID)
 
             return formatted_data
 
@@ -199,24 +218,15 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             self.session.cookies.clear()
 
     def _handle_failure(self, reason: str) -> None:
-        """Track failures and notify user after repeated failures."""
+        """Log a failure. Persistent notification is created in _async_update_data
+        (event loop) — this method runs in the executor and cannot safely call
+        async_create/async_dispatcher_send.
+        """
         _LOGGER.warning(
             "UZMZ update failed (%d consecutive): %s",
             self._consecutive_failures,
             reason,
         )
-        if self._consecutive_failures >= MAX_FAILURES_BEFORE_NOTIFY:
-            async_create(
-                self.hass,
-                (
-                    f"UZMZ has failed to update {self._consecutive_failures} times in a row.\n\n"
-                    f"**Reason:** {reason}\n\n"
-                    "The integration will keep retrying automatically. "
-                    "If this persists, check your internet connection or the USMS website."
-                ),
-                title="UZMZ Utility Meter — Update Failure",
-                notification_id=NOTIFICATION_ID,
-            )
 
     def _login(self) -> Dict[str, Any]:
         """Login to the UZMZ website.
