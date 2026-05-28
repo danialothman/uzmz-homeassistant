@@ -128,7 +128,14 @@ async def async_setup_entry(
             None,
         ),
     ])
-    
+
+    # Integration-status sensors (track the integration's own polling, distinct
+    # from the per-meter "last updated" sensors which reflect USMS billing time).
+    sensors.extend([
+        UZMZIntegrationStatusSensor(coordinator, "last_refresh"),
+        UZMZIntegrationStatusSensor(coordinator, "next_refresh"),
+    ])
+
     async_add_entities(sensors, True)
 
 
@@ -219,9 +226,9 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
         """Return extra state attributes."""
         if not self.coordinator.data:
             return {}
-        
+
         meter_data = self.coordinator.data.get(self._meter_type, {})
-        
+
         # Return all meter data as attributes
         return {
             "meter_type": self._meter_type,
@@ -229,4 +236,62 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
             "remaining_unit": meter_data.get("remaining_unit"),
             "remaining_balance": meter_data.get("remaining_balance"),
             "last_updated": meter_data.get("last_updated"),
+        }
+
+
+class UZMZIntegrationStatusSensor(CoordinatorEntity, SensorEntity):
+    """Tracks the integration's polling activity (last/next refresh)."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(
+        self,
+        coordinator: UZMZDataUpdateCoordinator,
+        kind: str,
+    ) -> None:
+        """Initialize the integration-status sensor."""
+        super().__init__(coordinator)
+        self._kind = kind
+        if kind == "last_refresh":
+            self._attr_name = "Last Refresh"
+            self._attr_icon = "mdi:cloud-sync"
+        elif kind == "next_refresh":
+            self._attr_name = "Next Refresh"
+            self._attr_icon = "mdi:clock-outline"
+        else:
+            raise ValueError(f"Unknown integration-status kind: {kind}")
+        self._attr_unique_id = f"{DOMAIN}_integration_{kind}"
+
+    @property
+    def native_value(self) -> Optional[datetime]:
+        """Return the timestamp this sensor represents."""
+        if self._kind == "last_refresh":
+            return self.coordinator.last_successful_refresh
+
+        # next_refresh: derive from last attempt + current update_interval.
+        attempt = self.coordinator.last_attempt_time
+        interval = self.coordinator.update_interval
+        if attempt is None or interval is None:
+            return None
+        return attempt + interval
+
+    @property
+    def available(self) -> bool:
+        """Stay available across transient failures.
+
+        The whole point of these sensors is to surface refresh state during
+        outages, so they shouldn't go "unavailable" the moment a poll fails.
+        Once we've ever had a successful refresh, treat them as available.
+        """
+        return self.coordinator.last_successful_refresh is not None
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        """Return device info for the integration-status device."""
+        return {
+            "identifiers": {(DOMAIN, "integration")},
+            "name": "UZMZ Integration",
+            "manufacturer": "USMS",
+            "model": "Integration Status",
         }

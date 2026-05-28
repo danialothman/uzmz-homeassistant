@@ -1,8 +1,9 @@
 """Data update coordinator for UZMZ integration."""
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -35,6 +36,9 @@ _LOGGER = logging.getLogger(__name__)
 
 NOTIFICATION_ID = "uzmz_update_failure"
 MAX_FAILURES_BEFORE_NOTIFY = 3
+MAX_AMBIGUOUS_LOGIN_BEFORE_AUTH_FAIL = 5
+FAILURE_RETRY_INTERVAL = timedelta(minutes=5)
+BRUNEI_TZ = ZoneInfo("Asia/Brunei")
 
 
 class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
@@ -57,6 +61,10 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         self.session = requests.Session()
         self.login_url = base_url + "ResLogin"
         self._consecutive_failures = 0
+        self._consecutive_ambiguous_login = 0
+        self._normal_update_interval = update_interval
+        self.last_successful_refresh: Optional[datetime] = None
+        self.last_attempt_time: Optional[datetime] = None
 
         super().__init__(
             hass,
@@ -75,7 +83,26 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Fetch data from UZMZ website."""
-        return await self.hass.async_add_executor_job(self._fetch_data)
+        self.last_attempt_time = datetime.now(BRUNEI_TZ)
+        try:
+            data = await self.hass.async_add_executor_job(self._fetch_data)
+        except UpdateFailed:
+            if self.update_interval != FAILURE_RETRY_INTERVAL:
+                _LOGGER.info(
+                    "Switched to fast retry interval (%s) after failure",
+                    FAILURE_RETRY_INTERVAL,
+                )
+                self.update_interval = FAILURE_RETRY_INTERVAL
+            raise
+
+        self.last_successful_refresh = datetime.now(BRUNEI_TZ)
+        if self.update_interval != self._normal_update_interval:
+            _LOGGER.info(
+                "Restored normal polling interval (%s) after recovery",
+                self._normal_update_interval,
+            )
+            self.update_interval = self._normal_update_interval
+        return data
 
     def _fetch_data(self) -> Dict[str, Any]:
         """Fetch meter data from the website."""
@@ -84,7 +111,30 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             login_result = self._login()
 
             if login_result["status"] == "auth_failed":
-                raise ConfigEntryAuthFailed("Login failed. Please check credentials.")
+                # Explicit credentials error detected on the page — high confidence.
+                raise ConfigEntryAuthFailed(
+                    f"Login failed: {login_result.get('error', 'invalid credentials')}"
+                )
+
+            if login_result["status"] == "ambiguous":
+                # Login response was unexpected but we have no explicit error indicator.
+                # Treat as transient (USMS quirks, maintenance, rate-limit page) unless
+                # this has been happening for many consecutive polls.
+                self._consecutive_ambiguous_login += 1
+                if self._consecutive_ambiguous_login >= MAX_AMBIGUOUS_LOGIN_BEFORE_AUTH_FAIL:
+                    _LOGGER.error(
+                        "Escalating ambiguous login to auth failure after %d consecutive occurrences",
+                        self._consecutive_ambiguous_login,
+                    )
+                    raise ConfigEntryAuthFailed(
+                        f"Login appears to be failing repeatedly "
+                        f"({self._consecutive_ambiguous_login} times). Please verify credentials."
+                    )
+                raise UpdateFailed(
+                    f"USMS returned unexpected login response "
+                    f"({self._consecutive_ambiguous_login}/{MAX_AMBIGUOUS_LOGIN_BEFORE_AUTH_FAIL}): "
+                    f"{login_result['error']}"
+                )
 
             if login_result["status"] == "connection_error":
                 raise UpdateFailed(
@@ -112,7 +162,13 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             # Format data for sensors
             formatted_data = self._format_meter_data(meter_data)
 
-            # Success — reset failure count and dismiss any notification
+            # Success — reset failure counters and dismiss any notification
+            if self._consecutive_ambiguous_login > 0:
+                _LOGGER.info(
+                    "Login recovered after %d ambiguous response(s); resetting counter",
+                    self._consecutive_ambiguous_login,
+                )
+                self._consecutive_ambiguous_login = 0
             if self._consecutive_failures > 0:
                 _LOGGER.info(
                     "UZMZ update succeeded after %d consecutive failure(s)",
@@ -166,9 +222,15 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         """Login to the UZMZ website.
 
         Returns a dict with:
-          - status: "success", "auth_failed", "connection_error", or "site_error"
+          - status: "success", "auth_failed", "ambiguous", "connection_error", or "site_error"
           - response: the Response object (on success)
           - error: error description (on failure)
+
+        Status meanings:
+          - "auth_failed": positive evidence credentials are wrong (explicit error on page).
+          - "ambiguous": login response missing the expected post-login content but no
+            explicit error either. Could be transient USMS issues, a maintenance page,
+            or rate-limiting. Caller decides whether to escalate.
         """
         try:
             # Get login page for tokens
@@ -204,28 +266,39 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             response = self.session.post(self.login_url, data=login_data, timeout=30)
             response.raise_for_status()
 
-            # Check login success
             soup = BeautifulSoup(response.text, "html.parser")
             login_success_msg = soup.find("span", {"id": ELEM_USERNAME_SPAN})
 
-            if not login_success_msg:
-                _LOGGER.warning("Login failed. Incorrect credentials.")
-                return {"status": "auth_failed", "error": "Invalid credentials"}
+            if login_success_msg:
+                # Check platform version if provided
+                if self.platform_version:
+                    version_elem = soup.find("span", {"id": ELEM_VERSION_SPAN})
+                    if version_elem:
+                        actual_version = version_elem.get_text(strip=True)
+                        if actual_version != self.platform_version:
+                            _LOGGER.warning(
+                                "Platform version mismatch. Expected: %s, Got: %s",
+                                self.platform_version,
+                                actual_version,
+                            )
 
-            # Check platform version if provided
-            if self.platform_version:
-                version_elem = soup.find("span", {"id": ELEM_VERSION_SPAN})
-                if version_elem:
-                    actual_version = version_elem.get_text(strip=True)
-                    if actual_version != self.platform_version:
-                        _LOGGER.warning(
-                            "Platform version mismatch. Expected: %s, Got: %s",
-                            self.platform_version,
-                            actual_version
-                        )
+                _LOGGER.info("Login successful")
+                return {"status": "success", "response": response}
 
-            _LOGGER.info("Login successful")
-            return {"status": "success", "response": response}
+            # No username span — could be bad credentials or unexpected page content.
+            explicit_error = self._extract_login_error_text(soup)
+            if explicit_error:
+                _LOGGER.warning("Login failed with explicit error: %s", explicit_error)
+                return {"status": "auth_failed", "error": explicit_error}
+
+            _LOGGER.warning(
+                "Login response missing expected content and no explicit error found "
+                "— treating as ambiguous (possible USMS maintenance or transient issue)"
+            )
+            return {
+                "status": "ambiguous",
+                "error": "Login page returned unexpected content (no username span, no error message)",
+            }
 
         except requests.ConnectionError as err:
             _LOGGER.error("Connection error during login: %s", err)
@@ -252,6 +325,23 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 "status": "connection_error",
                 "error": str(err),
             }
+
+    def _extract_login_error_text(self, soup: BeautifulSoup) -> Optional[str]:
+        """Find an explicit credentials-error indicator on the login response page.
+
+        Looks for ASP.NET-style error label spans (lblError, lblMessage, lblLoginError).
+        Returns the text if found, None otherwise. Without positive evidence, the
+        caller treats the response as ambiguous rather than concluding bad credentials.
+        """
+        for span in soup.find_all("span"):
+            span_id = span.get("id") or ""
+            id_lower = span_id.lower()
+            if not any(marker in id_lower for marker in ("lblerror", "lblmessage", "lblloginerror")):
+                continue
+            text = span.get_text(strip=True)
+            if text:
+                return text
+        return None
 
     def _get_iframe_content(self, response: requests.Response) -> Optional[requests.Response]:
         """Get the iframe content containing meter data."""

@@ -26,6 +26,17 @@ views:
             ## ⚠️ Connection Issue
             UZMZ is unable to reach the USMS website. The integration will keep retrying automatically. Check **Notifications** for details.
 
+      # Integration Status (shows when the integration last refreshed & when it will next try)
+      - type: entities
+        title: Integration Status
+        entities:
+          - entity: sensor.uzmz_integration_last_refresh
+            name: Last Refresh
+            icon: mdi:cloud-sync
+          - entity: sensor.uzmz_integration_next_refresh
+            name: Next Refresh
+            icon: mdi:clock-outline
+
       # Electric Meter Section
       - type: vertical-stack
         cards:

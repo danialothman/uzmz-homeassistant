@@ -87,6 +87,11 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     )
     new_interval = timedelta(seconds=scan_interval)
     
-    if coordinator.update_interval != new_interval:
-        coordinator.update_interval = new_interval
+    if coordinator._normal_update_interval != new_interval:
+        coordinator._normal_update_interval = new_interval
+        # If the coordinator is currently in fast-retry mode after a failure,
+        # leave update_interval alone — it will be restored on next success.
+        # Otherwise apply the new normal interval immediately.
+        if coordinator.update_interval != new_interval and coordinator._consecutive_failures == 0:
+            coordinator.update_interval = new_interval
         _LOGGER.info("Updated scan interval to %s", new_interval)
