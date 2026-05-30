@@ -112,29 +112,49 @@ views:
             content: |
               ## Historical Data
 
-          - type: history-graph
+          - type: statistic-graph
             title: Electric Usage Trend
             entities:
               - sensor.uzmz_electric_meter_electric_remaining_units
-            hours_to_show: 168
+            days_to_show: 365
+            period: day
+            stat_types:
+              - mean
+              - min
+              - max
 
-          - type: history-graph
+          - type: statistic-graph
             title: Electric Balance Trend
             entities:
               - sensor.uzmz_electric_meter_electric_remaining_balance
-            hours_to_show: 168
+            days_to_show: 365
+            period: day
+            stat_types:
+              - mean
+              - min
+              - max
 
-          - type: history-graph
+          - type: statistic-graph
             title: Water Usage Trend
             entities:
               - sensor.uzmz_water_meter_water_remaining_units
-            hours_to_show: 168
+            days_to_show: 365
+            period: day
+            stat_types:
+              - mean
+              - min
+              - max
 
-          - type: history-graph
+          - type: statistic-graph
             title: Water Balance Trend
             entities:
               - sensor.uzmz_water_meter_water_remaining_balance
-            hours_to_show: 168
+            days_to_show: 365
+            period: day
+            stat_types:
+              - mean
+              - min
+              - max
 
       # Manual Refresh Button
       - type: button

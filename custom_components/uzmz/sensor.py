@@ -51,7 +51,7 @@ async def async_setup_entry(
             UNIT_KWH,
             ICON_ELECTRIC,
             None,
-            None,
+            SensorStateClass.MEASUREMENT,
         ),
         UZMZSensor(
             coordinator,
@@ -60,8 +60,8 @@ async def async_setup_entry(
             "Electric Remaining Balance",
             UNIT_CURRENCY,
             ICON_CURRENCY,
-            SensorDeviceClass.MONETARY,
             None,
+            SensorStateClass.MEASUREMENT,
         ),
         UZMZSensor(
             coordinator,
@@ -95,7 +95,7 @@ async def async_setup_entry(
             UNIT_CUBIC_METER,
             ICON_WATER,
             None,
-            None,
+            SensorStateClass.MEASUREMENT,
         ),
         UZMZSensor(
             coordinator,
@@ -104,8 +104,8 @@ async def async_setup_entry(
             "Water Remaining Balance",
             UNIT_CURRENCY,
             ICON_CURRENCY,
-            SensorDeviceClass.MONETARY,
             None,
+            SensorStateClass.MEASUREMENT,
         ),
         UZMZSensor(
             coordinator,
