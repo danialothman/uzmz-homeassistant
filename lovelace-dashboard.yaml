@@ -112,7 +112,7 @@ views:
             content: |
               ## Historical Data
 
-          - type: statistic-graph
+          - type: statistics-graph
             title: Electric Usage Trend
             entities:
               - sensor.uzmz_electric_meter_electric_remaining_units
@@ -123,7 +123,7 @@ views:
               - min
               - max
 
-          - type: statistic-graph
+          - type: statistics-graph
             title: Electric Balance Trend
             entities:
               - sensor.uzmz_electric_meter_electric_remaining_balance
@@ -134,7 +134,7 @@ views:
               - min
               - max
 
-          - type: statistic-graph
+          - type: statistics-graph
             title: Water Usage Trend
             entities:
               - sensor.uzmz_water_meter_water_remaining_units
@@ -145,7 +145,7 @@ views:
               - min
               - max
 
-          - type: statistic-graph
+          - type: statistics-graph
             title: Water Balance Trend
             entities:
               - sensor.uzmz_water_meter_water_remaining_balance
