@@ -59,16 +59,16 @@ When USMS changes and the integration breaks, test `api.py` against the live sit
 1. **Credentials**: the user copies `.env.example` to `.env` and fills it in themselves (gitignored; never ask for credentials in chat).
 2. **Zero-cost check first**: fetch the public login page (no login) and compare against known structure: captcha hidden on the first page (`display:none`), form field names in `const.py`, stage 2 at `ResLogin?sc=`.
 3. **Step through a login**:
-   - `python scripts/live_test.py captcha`: submits stage 1, saves the stage-2 captcha to `.live_test/captcha.png`. Read the image.
-   - `python scripts/live_test.py login <code>`: submits stage 2, then fetches and prints parsed meter data.
+   - `python scripts/live_test.py captcha`: submits stage 1, saves the stage-2 captcha to `.live_test/captcha.png`.
+   - The **user** opens the image and runs `python scripts/live_test.py login <code>` (e.g. via `! python scripts/live_test.py login <code>`): submits stage 2, then fetches and prints parsed meter data. Claude must not solve captchas.
    - `python scripts/live_test.py fetch` / `keepalive`: session reuse from a new process (simulates an HA restart) / keep-alive only.
    - Every response is dumped to `.live_test/<command>_NN_<method>.html` with its redirect chain in the first line. Diagnose from these.
 4. **Version**: check `lblVer` on `MainPage` (6.1.1001 as of 2026-10-09). A change likely means the site changed.
-5. **If the script fails but a browser works**: open the login page in Chrome, install a JS hook that records the form fields on submit (redact the password) into `localStorage`, have the **user** type credentials + captcha (Claude must not enter passwords on real sites), re-install the hook after each page load, then diff the browser's POST against the script's. This is how the missing `DXScript`/`DXCss` fields and the `MainPage` landing page were found. Avoid query strings in tool output (blocked).
+5. **If the script fails but a browser works**: open the login page in Chrome, install a JS hook that records the form fields on submit (redact the password) into `localStorage`, have the **user** type credentials + captcha (Claude must not enter passwords or solve captchas), re-install the hook after each page load, then diff the browser's POST against the script's. This is how the missing `DXScript`/`DXCss` fields and the `MainPage` landing page were found. Avoid query strings in tool output (blocked).
 
 **Lockout safety** (USMS locks the account after 5 failed logins, and the counter isn't always shown):
 - The script refuses logins after a credentials rejection until `.live_test/STOP` is deleted.
-- Only submit captcha codes that are unambiguous (codes are 5 chars; glyphs like `lv`/`h` are ambiguous). Otherwise fetch a fresh one.
+- Captcha codes are 5 chars; if a glyph is ambiguous (e.g. `lv` vs `h`), the user should fetch a fresh one rather than guess.
 - If a submit fails silently (redirect with no error), stop and investigate before retrying.
 - Never GET the base URL or `ResLogin` with a live session; it ends the session (including the user's browser session).
 
