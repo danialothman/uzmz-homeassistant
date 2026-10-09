@@ -23,6 +23,8 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 NOTIFICATION_ID = "uzmz_update_failure"
+# Fixed so automations can trigger on it (e.g. to push to a phone).
+REAUTH_NOTIFICATION_ID = "uzmz_reauth_required"
 MAX_FAILURES_BEFORE_NOTIFY = 3
 FAILURE_RETRY_INTERVAL = timedelta(minutes=5)
 BRUNEI_TZ = ZoneInfo("Asia/Brunei")
@@ -68,6 +70,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             data = await self.hass.async_add_executor_job(self.client.fetch_meter_data)
         except SessionExpired as err:
             self._session_expired = True
+            self._async_notify_reauth()
             raise ConfigEntryAuthFailed(
                 "USMS session expired; re-authenticate and solve the captcha"
             ) from err
@@ -80,6 +83,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
         self._session_expired = False
+        async_dismiss(self.hass, REAUTH_NOTIFICATION_ID)
         if self._consecutive_failures > 0:
             _LOGGER.info(
                 "UZMZ update succeeded after %d consecutive failure(s)",
@@ -126,6 +130,21 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 notification_id=NOTIFICATION_ID,
             )
             self._notification_active = True
+
+    @callback
+    def _async_notify_reauth(self) -> None:
+        """Tell the user to log in again; HA's reauth prompt alone is easy to miss."""
+        async_create(
+            self.hass,
+            (
+                f"The USMS session for **{self.config_entry.title}** has expired, "
+                "so meter readings have stopped updating.\n\n"
+                "Open [Settings → Devices & services](/config/integrations/integration/uzmz), "
+                "choose **Reconfigure** on UZMZ and solve the captcha to sign in again."
+            ),
+            title="UZMZ — Sign-in required",
+            notification_id=REAUTH_NOTIFICATION_ID,
+        )
 
     @callback
     def _async_persist_cookies(self) -> None:

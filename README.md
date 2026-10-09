@@ -48,6 +48,24 @@ This integration will be submitted to HACS for easier installation.
 
 If the USMS session ends (site restart, long outage, Home Assistant offline for a while), the integration shows **Re-configuration required** under **Settings** → **Devices & Services**. Click **Reconfigure**, submit (your saved password is reused unless you enter a new one), then type the captcha.
 
+It also creates a **UZMZ — Sign-in required** notification (ID `uzmz_reauth_required`), which clears itself once you have signed in again. To get it on your phone, add an automation (replace `notify.mobile_app_your_phone` with your notify service):
+
+```yaml
+automation:
+  - alias: "UZMZ sign-in required"
+    triggers:
+      - trigger: persistent_notification
+        notification_id: uzmz_reauth_required
+        update_type: added
+    actions:
+      - action: notify.mobile_app_your_phone
+        data:
+          title: "UZMZ — Sign-in required"
+          message: "The USMS session expired. Open Home Assistant and solve the captcha to resume meter readings."
+          data:
+            url: /config/integrations/integration/uzmz
+```
+
 ### Through configuration.yaml (Alternative)
 
 ```yaml
