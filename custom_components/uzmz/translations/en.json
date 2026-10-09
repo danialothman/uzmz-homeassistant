@@ -3,28 +3,45 @@
     "step": {
       "user": {
         "title": "Connect to UZMZ",
-        "description": "Enter your USMS account credentials to monitor your utility meters.",
+        "description": "Enter your USMS account credentials to monitor your utility meters. You'll be asked to solve a captcha next.\n\n{site_message}",
         "data": {
           "ic_number": "IC Number",
           "password": "Password",
-          "base_url": "Base URL",
-          "platform_version": "Platform Version (Optional)"
+          "base_url": "Base URL"
         },
         "data_description": {
           "ic_number": "Your IC number used to login to USMS",
           "password": "Your USMS account password",
-          "base_url": "The USMS website URL (default: https://www.usms.com.bn/SmartMeter/)",
-          "platform_version": "Optional: Specific platform version to check (e.g., 5.1.107)"
+          "base_url": "The USMS website URL (default: https://www.usms.com.bn/SmartMeter/)"
+        }
+      },
+      "captcha": {
+        "title": "Solve the USMS captcha",
+        "description": "USMS requires a captcha to finish signing in. Type the characters shown below.\n\n![USMS captcha]({captcha_image})\n\n{site_message}",
+        "data": {
+          "captcha": "Captcha code"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in to USMS again",
+        "description": "The USMS session for {ic_number} has ended. Submit to sign in again; you will be asked to solve a captcha.\n\n{site_message}",
+        "data": {
+          "password": "Password"
+        },
+        "data_description": {
+          "password": "Leave blank to use the saved password"
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to USMS website. Please check the URL and your internet connection.",
-      "invalid_auth": "Invalid authentication. Please check your IC number and password.",
-      "unknown": "Unexpected error occurred. Please check the logs for more information."
+      "invalid_auth": "USMS rejected the IC number or password. Repeated failures will lock your USMS account.",
+      "unknown": "Unexpected error occurred. Please check the logs for more information.",
+      "invalid_captcha": "The captcha code was incorrect. A new captcha has been loaded; please try again."
     },
     "abort": {
-      "already_configured": "This IC number is already configured."
+      "already_configured": "This IC number is already configured.",
+      "reauth_successful": "Signed in to USMS again."
     }
   },
   "options": {

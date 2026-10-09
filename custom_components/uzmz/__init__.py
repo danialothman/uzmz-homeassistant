@@ -8,13 +8,12 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
+from .api import USMSClient
 from .const import (
     DOMAIN,
-    CONF_IC_NUMBER,
-    CONF_PASSWORD,
     CONF_BASE_URL,
-    CONF_PLATFORM_VERSION,
     CONF_SCAN_INTERVAL,
+    CONF_SESSION_COOKIES,
     DEFAULT_BASE_URL,
     DEFAULT_SCAN_INTERVAL,
 )
@@ -29,10 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up UZMZ from a config entry."""
     
     # Get configuration from entry
-    ic_number = entry.data[CONF_IC_NUMBER]
-    password = entry.data[CONF_PASSWORD]
     base_url = entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL)
-    platform_version = entry.data.get(CONF_PLATFORM_VERSION)
     
     # Get scan interval from options or use default
     scan_interval = entry.options.get(
@@ -41,18 +37,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     update_interval = timedelta(seconds=scan_interval)
     
+    # Reuse the session logged in via the config/reauth flow. Entries without
+    # one (or with an expired one) fail the first refresh with an auth error,
+    # which prompts the user to re-authenticate with a captcha.
+    client = USMSClient(
+        base_url,
+        cookies=entry.data.get(CONF_SESSION_COOKIES),
+    )
+    entry.async_on_unload(client.close)
+
     # Create the data update coordinator
     coordinator = UZMZDataUpdateCoordinator(
         hass,
-        ic_number=ic_number,
-        password=password,
-        base_url=base_url,
-        platform_version=platform_version,
+        entry,
+        client,
         update_interval=update_interval,
     )
     
     # Fetch initial data
     await coordinator.async_config_entry_first_refresh()
+    entry.async_on_unload(coordinator.async_start_keepalive())
     
     # Store coordinator
     hass.data.setdefault(DOMAIN, {})

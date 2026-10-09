@@ -19,4 +19,5 @@ Thumbs.db
 
 # Environment
 .env
+.live_test/
 *.log

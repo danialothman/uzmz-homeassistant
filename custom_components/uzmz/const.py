@@ -8,12 +8,15 @@ DOMAIN = "uzmz"
 CONF_IC_NUMBER = "ic_number"
 CONF_PASSWORD = "password"
 CONF_BASE_URL = "base_url"
-CONF_PLATFORM_VERSION = "platform_version"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_SESSION_COOKIES = "session_cookies"
 
 # Default values
 DEFAULT_BASE_URL = "https://www.usms.com.bn/SmartMeter/"
 DEFAULT_SCAN_INTERVAL = timedelta(hours=1)
+# How often to touch the USMS session so it doesn't idle out between polls.
+# ASP.NET's default session timeout is 20 minutes.
+KEEPALIVE_INTERVAL = timedelta(minutes=5)
 WATER_SCAN_INTERVAL = timedelta(hours=24)
 
 # Sensor types
@@ -28,11 +31,13 @@ ATTR_LAST_UPDATED = "last_updated"
 ATTR_METER_TYPE = "meter_type"
 
 # Field mappings from HTML
+# Matched on each card field's caption (e.g. "Remaining Unit:"), not its
+# position: USMS has shifted the layout item indexes before.
 FIELD_MAPPINGS = [
-    ("Meter Status", lambda x: x.endswith("_5_Cap")),
-    ("Remaining Unit", lambda x: x.endswith("_11_Cap")),
-    ("Remaining Balance", lambda x: x.endswith("_12_Cap")),
-    ("Last Updated", lambda x: x.endswith("_17_Cap")),
+    "Meter Status",
+    "Remaining Unit",
+    "Remaining Balance",
+    "Last Updated",
 ]
 
 # Image sources for meter types
@@ -46,11 +51,14 @@ FORM_VIEWSTATEGENERATOR = "__VIEWSTATEGENERATOR"
 FORM_USERNAME = "ASPxRoundPanel1$txtUsername"
 FORM_PASSWORD = "ASPxRoundPanel1$txtPassword"
 FORM_LOGIN_BUTTON = "ASPxRoundPanel1$btnLogin"
-FORM_LOGOUT_BUTTON = "ASPxPanel1$btnLogout"
+FORM_CAPTCHA = "ASPxRoundPanel1$ASPxCaptcha1$TB"
 
 # HTML element IDs
 ELEM_USERNAME_SPAN = "ASPxPanel1_lblUserName"
-ELEM_VERSION_SPAN = "lblVer"
+ELEM_LOGIN_ERROR = "pcErr_lblErrMsg"
+ELEM_CAPTCHA_BOX = "ASPxRoundPanel1_ASPxCaptcha1"
+ELEM_CAPTCHA_IMG = "ASPxRoundPanel1_ASPxCaptcha1_IMG"
+ELEM_CAPTCHA_ERROR = "ASPxRoundPanel1_ASPxCaptcha1_TB_EC"
 ELEM_IFRAME = "MyFrame"
 
 # Units of measurement
