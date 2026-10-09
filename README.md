@@ -42,7 +42,11 @@ This integration will be submitted to HACS for easier installation.
    - **IC Number**: Your IC number for USMS login
    - **Password**: Your USMS password
    - **Base URL**: (Optional) Default is `https://www.usms.com.bn/SmartMeter/`
-   - **Platform Version**: (Optional) Specific version check
+5. Type the captcha shown in the next step. USMS asks for a captcha at every login, so the integration signs in once and then keeps that session alive.
+
+### When USMS asks you to sign in again
+
+If the USMS session ends (site restart, long outage, Home Assistant offline for a while), the integration shows **Re-configuration required** under **Settings** → **Devices & Services**. Click **Reconfigure**, submit (your saved password is reused unless you enter a new one), then type the captcha.
 
 ### Through configuration.yaml (Alternative)
 
@@ -158,10 +162,6 @@ You can configure the update interval in the integration options:
 - Check your internet connection
 - Verify the USMS website is accessible
 - Check Home Assistant logs for errors
-
-### Platform Version Mismatch
-- The integration will log warnings but continue to work
-- Update the platform version in configuration if needed
 
 ## Debug Logging
 
