@@ -1,176 +1,205 @@
-# UZMZ Utility Meter Dashboard
-# Paste into: Dashboard → Edit → Raw Configuration Editor
-# Wrap under views: if adding to an existing dashboard
+# UZMZ Utility dashboard (sections view).
+#
+# Needs the helper sensors from examples/uzmz_package.yaml: consumption,
+# days left, and the sign-in sensor.
+#
+# Install: Settings -> Dashboards -> Add dashboard. Open it, then
+# Edit -> three dots -> Raw configuration editor, and paste this file.
+#
+# Gauge colours: electric goes red below 15 BND and yellow below 50; water
+# goes red below 5 and yellow below 15. These match the USMS SMS alerts;
+# adjust them to suit you.
 
 views:
-  - title: Utility Meters
-    path: utility-meters
-    icon: mdi:gauge
-    badges: []
+- type: sections
+  title: Utility Meters
+  path: utility-meters
+  max_columns: 4
+  cards: []
+  sections:
+  - type: grid
     cards:
-      # Header Card
-      - type: markdown
-        content: |
-          # Utility Meter Monitor
-          Real-time monitoring of your electric and water meters from USMS
+    - type: heading
+      heading: Status
+      icon: mdi:cloud-sync
+      heading_style: title
+    - type: markdown
+      content: '## ⚠️ Sign-in required
 
-      # Connection Status Warning (shows only when unavailable)
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: sensor.uzmz_electric_meter_electric_remaining_units
-            state: unavailable
-        card:
-          type: markdown
-          content: |
-            ## ⚠️ Connection Issue
-            UZMZ is unable to reach the USMS website. The integration will keep retrying automatically. Check **Notifications** for details.
+        The USMS session expired, so readings have stopped. [Open UZMZ](/config/integrations/integration/uzmz),
+        choose **Reconfigure** and solve the captcha.'
+      visibility:
+      - condition: state
+        entity: binary_sensor.uzmz_sign_in_required
+        state: 'on'
+    - type: markdown
+      content: '## ⚠️ Can''t reach USMS
 
-      # Integration Status (shows when the integration last refreshed & when it will next try)
-      - type: entities
-        title: Integration Status
-        entities:
-          - entity: sensor.uzmz_integration_last_refresh
-            name: Last Refresh
-            icon: mdi:cloud-sync
-          - entity: sensor.uzmz_integration_next_refresh
-            name: Next Refresh
-            icon: mdi:clock-outline
-
-      # Electric Meter Section
-      - type: vertical-stack
-        cards:
-          - type: markdown
-            content: |
-              ## Electric Meter
-
-          - type: horizontal-stack
-            cards:
-              - type: gauge
-                entity: sensor.uzmz_electric_meter_electric_remaining_units
-                name: Remaining Units
-                unit: kWh
-                severity:
-                  green: 100
-                  yellow: 50
-                  red: 0
-                min: 0
-                max: 500
-
-              - type: entity
-                entity: sensor.uzmz_electric_meter_electric_remaining_balance
-                name: Balance
-                icon: mdi:cash
-
-          - type: entities
-            entities:
-              - entity: sensor.uzmz_electric_meter_electric_meter_status
-                name: Status
-                icon: mdi:information-outline
-              - entity: sensor.uzmz_electric_meter_electric_last_updated
-                name: Last Updated
-                icon: mdi:update
-
-      # Water Meter Section
-      - type: vertical-stack
-        cards:
-          - type: markdown
-            content: |
-              ## Water Meter
-
-          - type: horizontal-stack
-            cards:
-              - type: gauge
-                entity: sensor.uzmz_water_meter_water_remaining_units
-                name: Remaining Units
-                unit: "m\xB3"
-                severity:
-                  green: 100
-                  yellow: 50
-                  red: 0
-                min: 0
-                max: 200
-
-              - type: entity
-                entity: sensor.uzmz_water_meter_water_remaining_balance
-                name: Balance
-                icon: mdi:cash
-
-          - type: entities
-            entities:
-              - entity: sensor.uzmz_water_meter_water_meter_status
-                name: Status
-                icon: mdi:information-outline
-              - entity: sensor.uzmz_water_meter_water_last_updated
-                name: Last Updated
-                icon: mdi:update
-
-      # Historical Data
-      - type: vertical-stack
-        cards:
-          - type: markdown
-            content: |
-              ## Historical Data
-
-          - type: statistics-graph
-            title: Electric Usage Trend
-            entities:
-              - sensor.uzmz_electric_meter_electric_remaining_units
-            days_to_show: 365
-            period: day
-            stat_types:
-              - mean
-              - min
-              - max
-
-          - type: statistics-graph
-            title: Electric Balance Trend
-            entities:
-              - sensor.uzmz_electric_meter_electric_remaining_balance
-            days_to_show: 365
-            period: day
-            stat_types:
-              - mean
-              - min
-              - max
-
-          - type: statistics-graph
-            title: Water Usage Trend
-            entities:
-              - sensor.uzmz_water_meter_water_remaining_units
-            days_to_show: 365
-            period: day
-            stat_types:
-              - mean
-              - min
-              - max
-
-          - type: statistics-graph
-            title: Water Balance Trend
-            entities:
-              - sensor.uzmz_water_meter_water_remaining_balance
-            days_to_show: 365
-            period: day
-            stat_types:
-              - mean
-              - min
-              - max
-
-      # Manual Refresh Button
+        The integration keeps retrying automatically. Check **Notifications** for details.'
+      visibility:
+      - condition: state
+        entity: sensor.uzmz_electric_meter_electric_remaining_units
+        state: unavailable
+      - condition: state
+        entity: binary_sensor.uzmz_sign_in_required
+        state_not: 'on'
+    - type: entities
+      entities:
+      - entity: sensor.uzmz_integration_last_refresh
+        name: Last Synced
+        format: relative
+      - entity: sensor.uzmz_integration_next_refresh
+        name: Next Sync
+        format: relative
       - type: button
-        tap_action:
-          action: call-service
-          service: homeassistant.update_entity
-          service_data:
-            entity_id:
-              - sensor.uzmz_electric_meter_electric_remaining_units
-              - sensor.uzmz_electric_meter_electric_remaining_balance
-              - sensor.uzmz_electric_meter_electric_meter_status
-              - sensor.uzmz_electric_meter_electric_last_updated
-              - sensor.uzmz_water_meter_water_remaining_units
-              - sensor.uzmz_water_meter_water_remaining_balance
-              - sensor.uzmz_water_meter_water_meter_status
-              - sensor.uzmz_water_meter_water_last_updated
-        name: Refresh All Meters
+        name: Sync now
         icon: mdi:refresh
-        icon_height: 40px
+        action_name: Sync
+        tap_action:
+          action: perform-action
+          perform_action: homeassistant.update_entity
+          target:
+            entity_id: sensor.uzmz_electric_meter_electric_remaining_balance
+  - type: grid
+    cards:
+    - type: heading
+      heading: Electric
+      icon: mdi:lightning-bolt
+      heading_style: title
+      badges:
+      - type: entity
+        entity: sensor.uzmz_electric_meter_electric_meter_status
+        show_state: true
+        show_icon: true
+        color: red
+        visibility:
+        - condition: state
+          entity: sensor.uzmz_electric_meter_electric_meter_status
+          state_not: ACTIVE
+    - type: gauge
+      entity: sensor.uzmz_electric_meter_electric_remaining_balance
+      name: Balance
+      unit: BND
+      min: 0
+      max: 300
+      severity:
+        green: 50
+        yellow: 15
+        red: 0
+      grid_options:
+        columns: 12
+        rows: auto
+    - type: tile
+      entity: sensor.uzmz_electric_meter_electric_remaining_units
+      name: Remaining
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.uzmz_electric_days_left
+      name: Days left (7-day avg)
+      grid_options:
+        columns: 6
+    - type: entities
+      entities:
+      - entity: sensor.uzmz_electric_meter_electric_meter_status
+        name: Status
+      - entity: sensor.uzmz_electric_meter_electric_last_updated
+        name: USMS reading date
+        format: date
+  - type: grid
+    cards:
+    - type: heading
+      heading: Water
+      icon: mdi:water
+      heading_style: title
+      badges:
+      - type: entity
+        entity: sensor.uzmz_water_meter_water_meter_status
+        show_state: true
+        show_icon: true
+        color: red
+        visibility:
+        - condition: state
+          entity: sensor.uzmz_water_meter_water_meter_status
+          state_not: ACTIVE
+    - type: gauge
+      entity: sensor.uzmz_water_meter_water_remaining_balance
+      name: Balance
+      unit: BND
+      min: 0
+      max: 60
+      severity:
+        green: 15
+        yellow: 5
+        red: 0
+      grid_options:
+        columns: 12
+        rows: auto
+    - type: tile
+      entity: sensor.uzmz_water_meter_water_remaining_units
+      name: Remaining
+      grid_options:
+        columns: 6
+    - type: tile
+      entity: sensor.uzmz_water_days_left
+      name: Days left (7-day avg)
+      grid_options:
+        columns: 6
+    - type: entities
+      entities:
+      - entity: sensor.uzmz_water_meter_water_meter_status
+        name: Status
+      - entity: sensor.uzmz_water_meter_water_last_updated
+        name: USMS reading date
+        format: date
+  - type: grid
+    cards:
+    - type: heading
+      heading: Usage
+      icon: mdi:chart-bar
+      heading_style: title
+    - type: statistics-graph
+      title: Electricity used per day
+      entities:
+      - entity: sensor.uzmz_electric_consumption
+        name: Electric
+      chart_type: bar
+      period: day
+      stat_types:
+      - change
+      days_to_show: 30
+      hide_legend: true
+    - type: statistics-graph
+      title: Water used per day
+      entities:
+      - entity: sensor.uzmz_water_consumption
+        name: Water
+      chart_type: bar
+      period: day
+      stat_types:
+      - change
+      days_to_show: 30
+      hide_legend: true
+    - type: statistics-graph
+      title: Electric balance (30 days)
+      chart_type: line
+      period: day
+      stat_types:
+      - mean
+      days_to_show: 30
+      entities:
+      - entity: sensor.uzmz_electric_meter_electric_remaining_balance
+        name: Electric
+      hide_legend: true
+    - type: statistics-graph
+      title: Water balance (30 days)
+      chart_type: line
+      period: day
+      stat_types:
+      - mean
+      days_to_show: 30
+      entities:
+      - entity: sensor.uzmz_water_meter_water_remaining_balance
+        name: Water
+      hide_legend: true
+  icon: mdi:gauge

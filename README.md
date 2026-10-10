@@ -108,7 +108,7 @@ Entity IDs are generated from the device and sensor names. These are the default
 
 The integration also has `sensor.uzmz_integration_last_refresh` (last successful sync) and `sensor.uzmz_integration_next_refresh`.
 
-USMS reports what is **left** on a prepaid meter, not what was used. The remaining-units sensors therefore can't be added to the Energy dashboard directly, because they drop as you use power and jump at every top-up.
+USMS reports what is **left** on a prepaid meter, not what was used. The remaining-units sensors therefore can't be added to the Energy dashboard directly, because they drop as you use power and jump at every top-up. For the Energy dashboard, use the consumption and cost sensors from the [helper sensors](#helper-sensors-optional).
 
 ### How readings stay current
 
@@ -143,9 +143,54 @@ The balance sensors show how each reading was calculated in their attributes: `e
 
 **After a top-up**, the readings don't include it until the next sign-in. To sign in straight away, go to **Settings** → **Devices & Services** → **UZMZ** → ⋮ → **Reconfigure** and solve the captcha.
 
+## Helper sensors (optional)
+
+[`examples/uzmz_package.yaml`](examples/uzmz_package.yaml) is a Home Assistant [package](https://www.home-assistant.io/docs/configuration/packages/) of extra sensors built on UZMZ's:
+
+| Sensor | What it shows |
+|---|---|
+| `sensor.uzmz_electric_consumption` / `sensor.uzmz_water_consumption` | kWh / m³ used. They add up every drop in remaining units and ignore top-ups. |
+| `sensor.uzmz_electric_cost` / `sensor.uzmz_water_cost` | BND spent. They add up every drop in balance and ignore top-ups. |
+| `sensor.uzmz_electric_days_left` / `sensor.uzmz_water_days_left` | Days of credit left at the last 7 days' average use |
+| `sensor.uzmz_electric_summary` / `sensor.uzmz_water_summary` | Balance and units on one line, e.g. `220.12 BND · 2422 kWh` |
+| `binary_sensor.uzmz_sign_in_required` | On while USMS needs you to sign in again |
+
+To install:
+1. Add `homeassistant: packages: !include_dir_named packages` to `configuration.yaml`.
+2. Copy the file to `config/packages/uzmz.yaml`.
+3. Restart Home Assistant.
+
+The counters start at 0 and fill in from then on. Days left needs about a day of data.
+
+### Energy dashboard
+
+With the helper sensors installed, go to **Settings** → **Dashboards** → **Energy** and add:
+
+- **Electricity grid**:
+  - **Grid consumption**: `sensor.uzmz_electric_consumption`
+  - **Cost**: choose **Use an entity tracking the total costs**, then `sensor.uzmz_electric_cost`
+- **Water consumption**:
+  - **Consumption**: `sensor.uzmz_water_consumption`
+  - **Cost**: `sensor.uzmz_water_cost`
+
+You then get daily, weekly and monthly usage and spend. The costs follow the tariff, because they come from the balance itself rather than a fixed price.
+
 ## Dashboard
 
-`lovelace-dashboard.yaml` is a ready-made dashboard. Create a new dashboard under **Settings** → **Dashboards**, open it, choose **Edit** → ⋮ → **Raw configuration editor**, and paste the file in.
+[`lovelace-dashboard.yaml`](lovelace-dashboard.yaml) is a ready-made **Utility Meters** view. It needs the [helper sensors](#helper-sensors-optional). It has:
+
+- **Status**:
+  - **Banners**: "sign-in required" and "can't reach USMS", each shown only when it applies.
+  - **Sync times**: when UZMZ last synced and when it syncs next.
+  - **Sync now**: a button for an immediate update.
+- **Electric and Water**:
+  - **Balance gauge**: red and yellow at the USMS SMS-alert levels.
+  - **Readings**: remaining units, days left, meter status, and the USMS reading date.
+- **Usage**:
+  - **Daily charts**: kWh and m³ used per day.
+  - **Balance charts**: 30-day electric and water balance.
+
+To add it, create a dashboard under **Settings** → **Dashboards**, open it, choose **Edit** → ⋮ → **Raw configuration editor**, and paste the file in.
 
 ## Automation examples
 

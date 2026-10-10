@@ -1,0 +1,219 @@
+# UZMZ helper sensors: an example Home Assistant package.
+#
+# Optional extras built on the UZMZ sensors. The dashboard in
+# lovelace-dashboard.yaml uses them.
+#   - UZMZ Electric/Water Summary: balance and units on one line.
+#   - UZMZ Sign-in Required: on while USMS needs a new sign-in.
+#   - UZMZ Electric/Water Consumption: kWh / m3 used (for the Energy dashboard).
+#   - UZMZ Electric/Water Cost: BND spent (for the Energy dashboard).
+#   - UZMZ Electric/Water Days Left: credit left at the last 7 days' use.
+#
+# Install:
+#   1. In configuration.yaml:
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   2. Copy this file to config/packages/uzmz.yaml.
+#   3. Restart Home Assistant (the 7-day statistics sensors only load on a restart).
+#
+# The counters start at 0 when installed and can't be backfilled. Days left
+# needs about a day of data before it shows a value.
+template:
+  - sensor:
+      # Balance and remaining units on one row, e.g. "224.17 BND · 2472 kWh".
+      - name: "UZMZ Electric Summary"
+        unique_id: uzmz_electric_summary
+        icon: mdi:lightning-bolt
+        state: >
+          {{ '%.2f' | format(states('sensor.uzmz_electric_meter_electric_remaining_balance') | float) }} BND
+          · {{ states('sensor.uzmz_electric_meter_electric_remaining_units') | float | round(0) | int }} kWh
+        availability: >
+          {{ has_value('sensor.uzmz_electric_meter_electric_remaining_balance')
+             and has_value('sensor.uzmz_electric_meter_electric_remaining_units') }}
+      - name: "UZMZ Water Summary"
+        unique_id: uzmz_water_summary
+        icon: mdi:water
+        state: >
+          {{ '%.2f' | format(states('sensor.uzmz_water_meter_water_remaining_balance') | float) }} BND
+          · {{ states('sensor.uzmz_water_meter_water_remaining_units') | float | round(1) }} m³
+        availability: >
+          {{ has_value('sensor.uzmz_water_meter_water_remaining_balance')
+             and has_value('sensor.uzmz_water_meter_water_remaining_units') }}
+
+  # On while the "UZMZ — Sign-in required" notification exists.
+  - triggers:
+      - trigger: persistent_notification
+        notification_id: uzmz_reauth_required
+        update_type:
+          - added
+          - removed
+    binary_sensor:
+      - name: "UZMZ Sign-in Required"
+        unique_id: uzmz_sign_in_required
+        device_class: problem
+        state: "{{ trigger.update_type == 'added' }}"
+
+  # Consumption counters for the Utility dashboard and the Energy dashboard.
+  # USMS only reports remaining units, so add up each drop and ignore
+  # top-ups. last_units carries the previous reading across outages.
+  - triggers:
+      - trigger: state
+        entity_id: sensor.uzmz_electric_meter_electric_remaining_units
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    sensor:
+      - name: "UZMZ Electric Consumption"
+        unique_id: uzmz_electric_consumption
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        icon: mdi:lightning-bolt
+        state: >
+          {% set total = this.state | float(0) %}
+          {% set last = this.attributes.get('last_units') %}
+          {% set units = states('sensor.uzmz_electric_meter_electric_remaining_units') | float(none) %}
+          {% if units is not none and last is not none and units < last | float %}
+            {{ (total + last | float - units) | round(3) }}
+          {% else %}
+            {{ total | round(3) }}
+          {% endif %}
+        attributes:
+          last_units: >
+            {% set units = states('sensor.uzmz_electric_meter_electric_remaining_units') | float(none) %}
+            {{ units if units is not none else this.attributes.get('last_units') }}
+  - triggers:
+      - trigger: state
+        entity_id: sensor.uzmz_water_meter_water_remaining_units
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    sensor:
+      - name: "UZMZ Water Consumption"
+        unique_id: uzmz_water_consumption
+        unit_of_measurement: m³
+        device_class: water
+        state_class: total_increasing
+        icon: mdi:water
+        state: >
+          {% set total = this.state | float(0) %}
+          {% set last = this.attributes.get('last_units') %}
+          {% set units = states('sensor.uzmz_water_meter_water_remaining_units') | float(none) %}
+          {% if units is not none and last is not none and units < last | float %}
+            {{ (total + last | float - units) | round(3) }}
+          {% else %}
+            {{ total | round(3) }}
+          {% endif %}
+        attributes:
+          last_units: >
+            {% set units = states('sensor.uzmz_water_meter_water_remaining_units') | float(none) %}
+            {{ units if units is not none else this.attributes.get('last_units') }}
+
+  # Money spent, for the Energy dashboard: add up each balance drop and
+  # ignore top-ups. Between sign-ins it follows UZMZ's tariff-based
+  # balance estimate; each sign-in brings the exact balance back.
+  - triggers:
+      - trigger: state
+        entity_id: sensor.uzmz_electric_meter_electric_remaining_balance
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    sensor:
+      - name: "UZMZ Electric Cost"
+        unique_id: uzmz_electric_cost
+        unit_of_measurement: BND
+        device_class: monetary
+        state_class: total
+        icon: mdi:cash
+        state: >
+          {% set total = this.state | float(0) %}
+          {% set last = this.attributes.get('last_balance') %}
+          {% set bal = states('sensor.uzmz_electric_meter_electric_remaining_balance') | float(none) %}
+          {% if bal is not none and last is not none and bal < last | float %}
+            {{ (total + last | float - bal) | round(2) }}
+          {% else %}
+            {{ total | round(2) }}
+          {% endif %}
+        attributes:
+          last_balance: >
+            {% set bal = states('sensor.uzmz_electric_meter_electric_remaining_balance') | float(none) %}
+            {{ bal if bal is not none else this.attributes.get('last_balance') }}
+  - triggers:
+      - trigger: state
+        entity_id: sensor.uzmz_water_meter_water_remaining_balance
+      - trigger: homeassistant
+        event: start
+      - trigger: event
+        event_type: event_template_reloaded
+    sensor:
+      - name: "UZMZ Water Cost"
+        unique_id: uzmz_water_cost
+        unit_of_measurement: BND
+        device_class: monetary
+        state_class: total
+        icon: mdi:cash
+        state: >
+          {% set total = this.state | float(0) %}
+          {% set last = this.attributes.get('last_balance') %}
+          {% set bal = states('sensor.uzmz_water_meter_water_remaining_balance') | float(none) %}
+          {% if bal is not none and last is not none and bal < last | float %}
+            {{ (total + last | float - bal) | round(2) }}
+          {% else %}
+            {{ total | round(2) }}
+          {% endif %}
+        attributes:
+          last_balance: >
+            {% set bal = states('sensor.uzmz_water_meter_water_remaining_balance') | float(none) %}
+            {{ bal if bal is not none else this.attributes.get('last_balance') }}
+
+  # Days of credit left at the last 7 days' average use.
+  - sensor:
+      - name: "UZMZ Electric Days Left"
+        unique_id: uzmz_electric_days_left
+        unit_of_measurement: d
+        icon: mdi:calendar-clock
+        state: >
+          {% set used = states('sensor.uzmz_electric_used_7d') | float(0) %}
+          {% set cov = state_attr('sensor.uzmz_electric_used_7d', 'age_coverage_ratio') | float(0) %}
+          {% set units = states('sensor.uzmz_electric_meter_electric_remaining_units') | float(0) %}
+          {{ (units / (used / (7 * cov))) | round(0) | int }}
+        availability: >
+          {{ states('sensor.uzmz_electric_used_7d') | float(0) > 0
+             and state_attr('sensor.uzmz_electric_used_7d', 'age_coverage_ratio') | float(0) >= 0.1
+             and has_value('sensor.uzmz_electric_meter_electric_remaining_units') }}
+      - name: "UZMZ Water Days Left"
+        unique_id: uzmz_water_days_left
+        unit_of_measurement: d
+        icon: mdi:calendar-clock
+        state: >
+          {% set used = states('sensor.uzmz_water_used_7d') | float(0) %}
+          {% set cov = state_attr('sensor.uzmz_water_used_7d', 'age_coverage_ratio') | float(0) %}
+          {% set units = states('sensor.uzmz_water_meter_water_remaining_units') | float(0) %}
+          {{ (units / (used / (7 * cov))) | round(0) | int }}
+        availability: >
+          {{ states('sensor.uzmz_water_used_7d') | float(0) > 0
+             and state_attr('sensor.uzmz_water_used_7d', 'age_coverage_ratio') | float(0) >= 0.1
+             and has_value('sensor.uzmz_water_meter_water_remaining_units') }}
+
+sensor:
+  # Units used over the last 7 days, for the days-left estimate.
+  - platform: statistics
+    name: "UZMZ Electric Used 7d"
+    unique_id: uzmz_electric_used_7d
+    entity_id: sensor.uzmz_electric_consumption
+    state_characteristic: change
+    max_age:
+      days: 7
+    sampling_size: 2000
+    precision: 3
+  - platform: statistics
+    name: "UZMZ Water Used 7d"
+    unique_id: uzmz_water_used_7d
+    entity_id: sensor.uzmz_water_consumption
+    state_characteristic: change
+    max_age:
+      days: 7
+    sampling_size: 2000
+    precision: 3
