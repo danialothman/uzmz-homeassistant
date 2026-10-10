@@ -4,6 +4,8 @@ A Home Assistant custom integration for monitoring prepaid electric and water me
 
 > **Unofficial.** This is an independent open-source project. It is not affiliated with, endorsed by or supported by USMS or any utility provider. It reads the same pages you see when you log in to the USMS website. Use it at your own risk.
 
+![UZMZ Utility dashboard](docs/images/utility-dashboard.png)
+
 ## Features
 
 - 🔌 **Electric meter**: remaining units (kWh), balance (BND), meter status and USMS reading date
