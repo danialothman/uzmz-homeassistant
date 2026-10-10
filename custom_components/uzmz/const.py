@@ -10,6 +10,8 @@ CONF_PASSWORD = "password"
 CONF_BASE_URL = "base_url"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_SESSION_COOKIES = "session_cookies"
+# Option: keep the password for sign-in renewals (off: ask for it every time).
+CONF_SAVE_PASSWORD = "save_password"
 
 # Default values
 DEFAULT_BASE_URL = "https://www.usms.com.bn/SmartMeter/"

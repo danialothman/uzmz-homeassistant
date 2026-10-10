@@ -32,6 +32,7 @@ A Home Assistant custom integration for monitoring prepaid electric and water me
 1. Go to **Settings** → **Devices & Services** → **Add Integration** and search for **UZMZ**.
 2. Enter your USMS login:
    - **IC Number** and **Password**: the ones you use on the USMS website
+   - **Remember password**: off by default; see [Privacy & security](#privacy--security)
    - **Base URL**: optional, defaults to `https://www.usms.com.bn/SmartMeter/`
 3. Type the captcha shown in the next step.
 
@@ -39,7 +40,7 @@ USMS asks for a captcha at every login, so the integration signs in once and the
 
 ### When USMS asks you to sign in again
 
-If the USMS session ends (site restart, long outage, Home Assistant offline for a while), the integration shows **Re-configuration required** under **Settings** → **Devices & Services**. Click **Reconfigure**, submit (your saved password is reused unless you enter a new one), then type the captcha.
+If the USMS session ends (site restart, long outage, Home Assistant offline for a while), the integration shows **Re-configuration required** under **Settings** → **Devices & Services**. Click **Reconfigure**, enter your password (or leave it blank if you chose **Remember password**), then type the captcha.
 
 It also creates a **UZMZ — Sign-in required** notification (ID `uzmz_reauth_required`), which clears itself once you have signed in again. To get it on your phone, add an automation (replace `notify.mobile_app_your_phone` with your notify service):
 
@@ -61,7 +62,30 @@ automation:
 
 ### Options
 
-To change the polling interval (300–86400 seconds), go to **Settings** → **Devices & Services** → **UZMZ** → **Configure**.
+Go to **Settings** → **Devices & Services** → **UZMZ** → **Configure** to change:
+
+- **Update interval**: how often to fetch meter data (300–86400 seconds, default 3600)
+- **Remember password**: turning it off deletes the saved password immediately; turning it on saves your password the next time you sign in
+
+## Privacy & security
+
+UZMZ only talks to the USMS website, over HTTPS with certificate checks. There is no other server, no telemetry and no analytics.
+
+What is stored, in Home Assistant's own configuration storage (`config/.storage/core.config_entries`), like every other integration:
+
+| Item | Stored? | Why |
+|---|---|---|
+| IC number | Yes | Identifies your USMS account |
+| USMS session cookie | Yes | Lets readings continue after a Home Assistant restart without solving a new captcha. While it is valid, it gives the same access as being logged in on the USMS website. |
+| Password | **Only if you turn on Remember password** (off by default) | Lets you sign in again with just the captcha |
+
+Things to know:
+
+- Home Assistant stores integration data **unencrypted** on its own disk. Anyone with access to your Home Assistant files, or to an unencrypted Home Assistant backup, can read it. Keep backups private, or turn on backup encryption.
+- Your password, IC number and session cookie are never written to the logs or to notifications. On a failed login only USMS's own error message is logged.
+- UZMZ never logs in by itself. It only submits a login when you do (setup or reauth), so it cannot lock your account. USMS locks accounts after 5 failed logins.
+- Between sign-ins UZMZ only reads two pages: your meter page every polling interval, plus a light keep-alive every 5 minutes so the session doesn't time out.
+- Removing the integration deletes everything it stored.
 
 ## Sensors
 
