@@ -183,6 +183,8 @@ With the helper sensors installed, go to **Settings** → **Dashboards** → **E
 
 You then get daily, weekly and monthly usage and spend. The costs follow the tariff, because they come from the balance itself rather than a fixed price.
 
+![Energy dashboard with UZMZ electricity and water](docs/images/energy-dashboard.png)
+
 ## Dashboard
 
 [`lovelace-dashboard.yaml`](lovelace-dashboard.yaml) is a ready-made **Utility Meters** view. It needs the [helper sensors](#helper-sensors-optional). It has:
