@@ -18,7 +18,8 @@ custom_components/uzmz/
   manifest.json     - Integration metadata
   strings.json      - UI strings
   translations/en.json - English translations
-lovelace-dashboard.yaml - Pre-configured dashboard
+lovelace-dashboard.yaml - Utility dashboard view (needs examples/uzmz_package.yaml)
+examples/uzmz_package.yaml - Optional helper sensors (consumption, cost, days left, sign-in)
 hacs.json            - HACS metadata
 LICENSE              - MIT
 custom_components/uzmz/brand/ - Icons (HACS reads these; original design, no USMS branding)
