@@ -12,6 +12,8 @@ from .api import USMSClient
 from .const import (
     DOMAIN,
     CONF_BASE_URL,
+    CONF_PASSWORD,
+    CONF_SAVE_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_SESSION_COOKIES,
     DEFAULT_BASE_URL,
@@ -27,6 +29,13 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up UZMZ from a config entry."""
     
+    # Entries from before the save-password option kept the password; drop it
+    # unless the user has opted in to keeping it.
+    if CONF_PASSWORD in entry.data and not entry.options.get(CONF_SAVE_PASSWORD, False):
+        data = dict(entry.data)
+        data.pop(CONF_PASSWORD)
+        hass.config_entries.async_update_entry(entry, data=data)
+
     # Get configuration from entry
     base_url = entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL)
     

@@ -5,6 +5,9 @@ captcha. Logging in is therefore always interactive: the user enters
 credentials, the flow submits stage 1, then shows the captcha for stage 2.
 The resulting session cookies are stored in the entry and reused by the
 coordinator. When the session expires, the reauth flow repeats the login.
+
+The password is only stored when the user opts in (CONF_SAVE_PASSWORD);
+otherwise reauth asks for it again along with the captcha.
 """
 
 import base64
@@ -30,6 +33,7 @@ from .const import (
     CONF_IC_NUMBER,
     CONF_PASSWORD,
     CONF_BASE_URL,
+    CONF_SAVE_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_SESSION_COOKIES,
     DEFAULT_BASE_URL,
@@ -73,7 +77,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self._async_finish()
             errors["base"] = error
 
-        defaults = user_input or self._data
+        return self._show_user_form(user_input or self._data, errors, site_message)
+
+    def _show_user_form(
+        self, defaults: Dict[str, Any], errors: Dict[str, str], site_message: str
+    ) -> ConfigFlowResult:
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
@@ -82,6 +90,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_IC_NUMBER, default=defaults.get(CONF_IC_NUMBER, "")
                     ): str,
                     vol.Required(CONF_PASSWORD): str,
+                    vol.Optional(
+                        CONF_SAVE_PASSWORD, default=defaults.get(CONF_SAVE_PASSWORD, False)
+                    ): bool,
                     vol.Optional(
                         CONF_BASE_URL, default=defaults.get(CONF_BASE_URL, DEFAULT_BASE_URL)
                     ): str,
@@ -137,24 +148,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if error == "invalid_auth":
                 # Password rejected: back to the step where it can be fixed.
                 if self.source == SOURCE_REAUTH:
+                    self._data.pop(CONF_PASSWORD, None)  # don't reuse a rejected one
                     return self._show_reauth_form({"base": error}, site_message)
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Required(
-                                CONF_IC_NUMBER, default=self._data[CONF_IC_NUMBER]
-                            ): str,
-                            vol.Required(CONF_PASSWORD): str,
-                            vol.Optional(
-                                CONF_BASE_URL,
-                                default=self._data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
-                            ): str,
-                        }
-                    ),
-                    errors={"base": error},
-                    description_placeholders={"site_message": site_message},
-                )
+                return self._show_user_form(self._data, {"base": error}, site_message)
             errors["base"] = error
 
         return self.async_show_form(
@@ -170,9 +166,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def _show_reauth_form(
         self, errors: Dict[str, str], site_message: str
     ) -> ConfigFlowResult:
+        # Without a saved password, the user has to type it again.
+        password_key = vol.Optional if self._data.get(CONF_PASSWORD) else vol.Required
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({vol.Optional(CONF_PASSWORD): str}),
+            data_schema=vol.Schema({password_key(CONF_PASSWORD): str}),
             errors=errors,
             description_placeholders={
                 "ic_number": self._data[CONF_IC_NUMBER],
@@ -182,19 +180,26 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @callback
     def _async_finish(self) -> ConfigFlowResult:
-        """Store the logged-in session on the entry."""
+        """Store the logged-in session (and the password only if opted in)."""
         cookies = self._client.get_cookies()
         if self.source == SOURCE_REAUTH:
-            return self.async_update_reload_and_abort(
-                self._get_reauth_entry(),
-                data_updates={
-                    CONF_PASSWORD: self._data[CONF_PASSWORD],
-                    CONF_SESSION_COOKIES: cookies,
-                },
-            )
+            entry = self._get_reauth_entry()
+            data = {**entry.data, CONF_SESSION_COOKIES: cookies}
+            data.pop(CONF_PASSWORD, None)
+            if entry.options.get(CONF_SAVE_PASSWORD, False):
+                data[CONF_PASSWORD] = self._data[CONF_PASSWORD]
+            return self.async_update_reload_and_abort(entry, data=data)
+
+        save_password = self._data.get(CONF_SAVE_PASSWORD, False)
+        data = {
+            key: value
+            for key, value in self._data.items()
+            if key != CONF_SAVE_PASSWORD and (key != CONF_PASSWORD or save_password)
+        }
         return self.async_create_entry(
             title=f"UZMZ {self._data[CONF_IC_NUMBER]}",
-            data={**self._data, CONF_SESSION_COOKIES: cookies},
+            data={**data, CONF_SESSION_COOKIES: cookies},
+            options={CONF_SAVE_PASSWORD: save_password},
         )
 
     async def _async_start_login(self) -> tuple[Optional[str], str]:
@@ -276,6 +281,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
+            if not user_input[CONF_SAVE_PASSWORD] and CONF_PASSWORD in self.config_entry.data:
+                # Opting out deletes the saved password right away. Opting in
+                # saves it at the next sign-in, when the user types it.
+                data = dict(self.config_entry.data)
+                data.pop(CONF_PASSWORD)
+                self.hass.config_entries.async_update_entry(self.config_entry, data=data)
             return self.async_create_entry(title="", data=user_input)
 
         # Get current values
@@ -283,6 +294,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             CONF_SCAN_INTERVAL,
             DEFAULT_SCAN_INTERVAL.total_seconds()
         )
+        save_password = self.config_entry.options.get(CONF_SAVE_PASSWORD, False)
 
         return self.async_show_form(
             step_id="init",
@@ -295,6 +307,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         vol.Coerce(int),
                         vol.Range(min=300, max=86400),  # 5 minutes to 24 hours
                     ),
+                    vol.Required(CONF_SAVE_PASSWORD, default=save_password): bool,
                 }
             ),
         )

@@ -7,11 +7,13 @@
         "data": {
           "ic_number": "IC Number",
           "password": "Password",
+          "save_password": "Remember password",
           "base_url": "Base URL"
         },
         "data_description": {
           "ic_number": "Your IC number used to login to USMS",
           "password": "Your USMS account password",
+          "save_password": "Off (recommended): the password is only used to sign in now, and you type it again whenever USMS asks you to sign in again. On: it is saved in Home Assistant's configuration (unencrypted, like other integrations' passwords) so signing in again only needs the captcha.",
           "base_url": "The USMS SmartMeter website address. Leave the default unless USMS moves the site."
         }
       },
@@ -24,12 +26,12 @@
       },
       "reauth_confirm": {
         "title": "Sign in to USMS again",
-        "description": "The USMS session for {ic_number} has ended. Submit to sign in again; you will be asked to solve a captcha.\n\n{site_message}",
+        "description": "The USMS session for {ic_number} has ended. Sign in again; you will be asked to solve a captcha next.\n\n{site_message}",
         "data": {
           "password": "Password"
         },
         "data_description": {
-          "password": "Leave blank to use the saved password"
+          "password": "Your USMS password. If you chose to remember it, you can leave this blank."
         }
       }
     },
@@ -48,12 +50,14 @@
     "step": {
       "init": {
         "title": "UZMZ Options",
-        "description": "Configure how often to fetch meter data.",
+        "description": "Configure how often to fetch meter data and whether to remember your password.",
         "data": {
-          "scan_interval": "Update interval (seconds)"
+          "scan_interval": "Update interval (seconds)",
+          "save_password": "Remember password"
         },
         "data_description": {
-          "scan_interval": "How often to fetch meter data from USMS (minimum 300 seconds, maximum 86400 seconds)"
+          "scan_interval": "How often to fetch meter data from USMS (minimum 300 seconds, maximum 86400 seconds)",
+          "save_password": "Turning this off deletes the saved password now. Turning it on saves your password the next time you sign in."
         }
       }
     }
