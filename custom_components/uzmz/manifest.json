@@ -1,12 +1,13 @@
 {
   "domain": "uzmz",
   "name": "UZMZ Utility Meter Monitor",
-  "codeowners": ["@danial"],
+  "codeowners": ["@danialothman"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/danial/uzmz-homeassistant",
-  "integration_type": "device",
+  "documentation": "https://github.com/danialothman/uzmz-homeassistant",
+  "integration_type": "hub",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/danialothman/uzmz-homeassistant/issues",
   "requirements": ["beautifulsoup4>=4.12.3"],
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
