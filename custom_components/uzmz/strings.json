@@ -33,6 +33,16 @@
         "data_description": {
           "password": "Your USMS password. If you chose to remember it, you can leave this blank."
         }
+      },
+      "reconfigure": {
+        "title": "Sign in to USMS again",
+        "description": "Start a new USMS session, for example after a top-up so the balance updates straight away. You will be asked to solve a captcha next.\n\n{site_message}",
+        "data": {
+          "password": "Password"
+        },
+        "data_description": {
+          "password": "Your USMS password. If you chose to remember it, you can leave this blank."
+        }
       }
     },
     "error": {
@@ -43,7 +53,8 @@
     },
     "abort": {
       "already_configured": "This IC number is already configured.",
-      "reauth_successful": "Signed in to USMS again."
+      "reauth_successful": "Signed in to USMS again.",
+      "reconfigure_successful": "Signed in to USMS again."
     }
   },
   "options": {

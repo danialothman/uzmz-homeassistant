@@ -77,3 +77,8 @@ ICON_WATER = "mdi:water"
 ICON_CURRENCY = "mdi:cash"
 ICON_STATUS = "mdi:information-outline"
 ICON_UPDATE = "mdi:update"
+# Usage-report bookkeeping stored in the config entry (see usage.py).
+CONF_USAGE_ANCHORS = "usage_anchors"
+CONF_USAGE_RATES = "usage_rates"
+# Set by the config flow after a login so the next update re-anchors.
+CONF_FRESH_SESSION = "fresh_session"

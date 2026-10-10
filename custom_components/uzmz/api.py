@@ -10,6 +10,7 @@ Never GET the base URL or ResLogin with a live session: USMS ends the session
 whenever the login page is served.
 """
 
+import datetime as dt
 import logging
 import threading
 import urllib.parse
@@ -39,6 +40,11 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = 30
+
+# Usage History report types: (cboType value, cboType text)
+REPORT_DAILY = ("1", "Daily (Max 1 month)")
+REPORT_HOURLY = ("3", "Hourly (Max 1 day)")
+_EPOCH = dt.datetime(1970, 1, 1)
 
 
 class USMSError(Exception):
@@ -210,6 +216,64 @@ class USMSClient:
         with self._lock:
             self._get_home()
 
+    def fetch_usage(
+        self, usage_path: str, start: dt.date, today: dt.date, hourly: bool
+    ) -> Dict[str, float]:
+        """Return consumption per date (ISO date -> units) from start to today.
+
+        USMS's Home cards only show the readings as of login, but its usage
+        reports are live. Past days come from the Daily report (it only
+        accepts dates before today); today's total comes from the Hourly
+        report, which only electric meters have. Raises SessionExpired.
+        """
+        usage: Dict[str, float] = {}
+        with self._lock:
+            yesterday = today - dt.timedelta(days=1)
+            if start <= yesterday:
+                rows = self._usage_report(usage_path, REPORT_DAILY, start, yesterday)
+                for label, value in rows:
+                    day = dt.datetime.strptime(label, "%d/%m/%Y").date()
+                    usage[day.isoformat()] = value
+            if hourly:
+                rows = self._usage_report(usage_path, REPORT_HOURLY, today, today)
+                usage[today.isoformat()] = round(sum(value for _, value in rows), 3)
+        return usage
+
+    def _usage_report(
+        self, usage_path: str, report: tuple[str, str], start: dt.date, end: dt.date
+    ) -> list[tuple[str, float]]:
+        """Run a Usage History report for one meter and return its rows."""
+        url = urllib.parse.urljoin(self.base_url, usage_path)
+        response = self._get(url)
+        if "SessionExpire" in response.url or "ResLogin" in response.url:
+            raise SessionExpired("USMS session is no longer logged in")
+        form = BeautifulSoup(response.text, "html.parser").find("form")
+        if not form:
+            raise SiteError("Usage report page did not contain a form")
+        data = {
+            tag["name"]: tag.get("value", "")
+            for tag in form.find_all("input")
+            if tag.get("name") and tag.get("type") not in ("submit", "button", "image")
+        }
+        data.update(
+            {
+                "__EVENTTARGET": "",
+                "__EVENTARGUMENT": "",
+                "cboType_VI": report[0],
+                "cboType": report[1],
+                "btnRefresh": "Search",
+            }
+        )
+        for field, day in (("cboDateFrom", start), ("cboDateTo", end)):
+            data[field] = day.strftime("%d/%m/%Y")
+            # The server reads the date edit's raw value (milliseconds, local
+            # time written as if it were UTC), not the text box.
+            raw = str(int((dt.datetime.combine(day, dt.time()) - _EPOCH).total_seconds() * 1000))
+            data[f"{field}$State"] = '{"rawValue":"%s"}' % raw
+            data[f"{field}_Raw"] = raw
+        response = self._request("post", response.url, data=data)
+        return _parse_usage_rows(response.text)
+
     def fetch_meter_data(self) -> Dict[str, Any]:
         """Fetch and parse meter data. Raises SessionExpired if logged out."""
         with self._lock:
@@ -303,6 +367,11 @@ def _parse_meter_cards(html: str) -> list[Dict[str, str]]:
                 if cell:
                     meter_data[field_name] = cell.text.strip()
 
+        # Each card links to its meter's Usage History report.
+        report_link = card.find("a", href=lambda x: x and x.startswith("Report/UsageHistory?p="))
+        if report_link and meter_data:
+            meter_data["Usage Path"] = report_link["href"]
+
         if meter_data:
             filtered_data.append(meter_data)
 
@@ -325,6 +394,24 @@ def _format_meter_data(meter_data: list[Dict[str, str]]) -> Dict[str, Any]:
                 "remaining_unit": meter.get("Remaining Unit", "0"),
                 "remaining_balance": meter.get("Remaining Balance", "0"),
                 "last_updated": meter.get("Last Updated", ""),
+                "usage_path": meter.get("Usage Path"),
             }
 
     return formatted
+
+
+def _parse_usage_rows(html: str) -> list[tuple[str, float]]:
+    """Parse a Usage History grid into (date or hour, consumption) rows."""
+    soup = BeautifulSoup(html, "html.parser")
+    error = soup.find("span", {"id": ELEM_LOGIN_ERROR})
+    if error and error.get_text(strip=True):
+        raise SiteError(f"USMS usage report: {error.get_text(' ', strip=True)}")
+    rows = []
+    for tr in soup.select("tr.dxgvDataRow"):
+        cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+        if len(cells) >= 2 and cells[0]:
+            try:
+                rows.append((cells[0], float(cells[1].replace(",", ""))))
+            except ValueError:
+                _LOGGER.debug("Skipping usage row %s", cells[:2])
+    return rows

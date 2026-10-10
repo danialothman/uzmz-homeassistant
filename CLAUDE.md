@@ -12,7 +12,8 @@ custom_components/uzmz/
   config_flow.py    - UI configuration flow + options flow
   const.py          - Constants, defaults, sensor definitions
   api.py            - USMS website client (captcha login, session reads, parsing)
-  coordinator.py    - Data update coordinator (session reuse, keep-alive, reauth)
+  coordinator.py    - Data update coordinator (session reuse, keep-alive, reauth, live usage)
+  usage.py          - Anchors the login-time readings to the live usage reports
   sensor.py         - Sensor entity definitions (8 sensors: 4 electric, 4 water)
   manifest.json     - Integration metadata
   strings.json      - UI strings
@@ -29,7 +30,7 @@ tests/               - pytest suite for api.py (no HA needed)
 
 - **Pattern**: HA Coordinator pattern (ConfigFlow -> Coordinator -> CoordinatorEntity)
 - **Data source**: Web scraping USMS website using `requests` + `BeautifulSoup4`
-- **Auth**: ASP.NET form-based auth (__VIEWSTATE, __EVENTVALIDATION) in two stages: IC + password posts to `ResLogin` and redirects to `ResLogin?sc=<token>`, which shows a DevExpress captcha; IC + password + captcha there logs in (lands on `MainPage`). Login only happens interactively in the config/reauth flow; the session cookies are stored in the entry (the password only if the user opts in via `save_password`, default off; reauth then asks for it) and the coordinator only GETs `MainPage` and the `Default.aspx` data iframe, with a keep-alive every 5 minutes. Never GET the base URL or `ResLogin` with a live session (USMS ends the session), and never add unattended login POSTs (account locks after 5 failures). `scripts/live_test.py` exercises `api.py` against the live site using `.env` credentials.
+- **Auth**: ASP.NET form-based auth (__VIEWSTATE, __EVENTVALIDATION) in two stages: IC + password posts to `ResLogin` and redirects to `ResLogin?sc=<token>`, which shows a DevExpress captcha; IC + password + captcha there logs in (lands on `MainPage`). Login only happens interactively in the config/reauth flow; the session cookies are stored in the entry (the password only if the user opts in via `save_password`, default off; reauth then asks for it) and the coordinator only GETs `MainPage` and the `Default.aspx` data iframe, with a keep-alive every 5 minutes. The Home cards only show the readings as of login for the whole session, so `usage.py` anchors that snapshot to the live Usage History reports (Daily for past days, which only accepts dates before today; Hourly for today, electric only) and computes current units and an estimated balance; the anchors and learned rates live in the entry data. Report dates must be posted as DevExpress raw values (`<field>$State`), not just the text box. Never GET the base URL or `ResLogin` with a live session (USMS ends the session), and never add unattended login POSTs (account locks after 5 failures). `scripts/live_test.py` exercises `api.py` against the live site using `.env` credentials.
 - **IoT class**: cloud_polling
 - **Domain**: `uzmz`
 
@@ -69,6 +70,7 @@ When USMS changes and the integration breaks, test `api.py` against the live sit
    - `python scripts/live_test.py captcha`: submits stage 1, saves the stage-2 captcha to `.live_test/captcha.png`.
    - The **user** opens the image and runs `python scripts/live_test.py login <code>` (e.g. via `! python scripts/live_test.py login <code>`): submits stage 2, then fetches and prints parsed meter data. Claude must not solve captchas.
    - `python scripts/live_test.py fetch` / `keepalive`: session reuse from a new process (simulates an HA restart) / keep-alive only.
+   - `python scripts/live_test.py usage`: the live Usage History reports (daily + hourly) next to the Home snapshot; check these still parse if readings stop updating.
    - Every response is dumped to `.live_test/<command>_NN_<method>.html` with its redirect chain in the first line. Diagnose from these.
 4. **Version**: check `lblVer` on `MainPage` (6.1.1001 as of 2026-10-09). A change likely means the site changed.
 5. **If the script fails but a browser works**: open the login page in Chrome, install a JS hook that records the form fields on submit (redact the password) into `localStorage`, have the **user** type credentials + captcha (Claude must not enter passwords or solve captchas), re-install the hook after each page load, then diff the browser's POST against the script's. This is how the missing `DXScript`/`DXCss` fields and the `MainPage` landing page were found. Avoid query strings in tool output (blocked).

@@ -8,11 +8,13 @@ command, letting a human (or Claude) read the captcha image in between:
     python scripts/live_test.py login <code>   # logs in, then fetches meter data
     python scripts/live_test.py fetch          # reuses saved session (like an HA restart)
     python scripts/live_test.py keepalive      # touches the session only
+    python scripts/live_test.py usage          # live consumption from the usage reports
 
 If USMS rejects the IC number/password, further logins are refused until
 .live_test/STOP is deleted, so a typo can't walk the account into lockout.
 """
 
+import datetime as dt
 import json
 import sys
 import types
@@ -100,7 +102,7 @@ def save_state(client: USMSClient) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] not in ("captcha", "login", "fetch", "keepalive"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("captcha", "login", "fetch", "keepalive", "usage"):
         sys.exit(__doc__)
     command = sys.argv[1]
     env = load_env()
@@ -149,6 +151,18 @@ def main() -> None:
         elif command == "keepalive":
             client.keep_alive()
             print("Session alive")
+
+        elif command == "usage":
+            # Live consumption from the usage reports (the Home cards only
+            # show the readings as of login), last 3 days plus today.
+            today = dt.date.today()
+            for meter, readings in client.fetch_meter_data().items():
+                if not readings.get("usage_path"):
+                    continue
+                usage = client.fetch_usage(
+                    readings["usage_path"], today - dt.timedelta(days=3), today, meter == "electric"
+                )
+                print(f"{meter}: Home shows {readings['remaining_unit']}; reports: {json.dumps(usage)}")
 
     except InvalidCredentials as err:
         STATE_DIR.mkdir(exist_ok=True)
