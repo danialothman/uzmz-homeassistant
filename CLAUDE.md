@@ -80,5 +80,6 @@ When USMS changes and the integration breaks, test `api.py` against the live sit
 - Captcha codes are 5 chars; if a glyph is ambiguous (e.g. `lv` vs `h`), the user should fetch a fresh one rather than guess.
 - If a submit fails silently (redirect with no error), stop and investigate before retrying.
 - Never GET the base URL or `ResLogin` with a live session; it ends the session (including the user's browser session).
+- USMS allows one session per account: a `live_test.py` login (or the user logging in on the website/app) ends Home Assistant's session, which then asks the user to sign in again. Warn the user before a live-test login. (Observed 2026-10-10: test login 11:19, HA sign-in required 11:20.)
 
 **Cleanup**: delete `.live_test/` afterwards; it holds a live session cookie and personal data from the account pages.
