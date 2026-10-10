@@ -38,6 +38,7 @@ from .const import (
     CONF_SESSION_COOKIES,
     DEFAULT_BASE_URL,
     DEFAULT_SCAN_INTERVAL,
+    ENTRY_TITLE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -172,10 +173,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reauth_confirm",
             data_schema=vol.Schema({password_key(CONF_PASSWORD): str}),
             errors=errors,
-            description_placeholders={
-                "ic_number": self._data[CONF_IC_NUMBER],
-                "site_message": site_message,
-            },
+            description_placeholders={"site_message": site_message},
         )
 
     @callback
@@ -197,7 +195,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if key != CONF_SAVE_PASSWORD and (key != CONF_PASSWORD or save_password)
         }
         return self.async_create_entry(
-            title=f"UZMZ {self._data[CONF_IC_NUMBER]}",
+            # Not the IC number: titles show in the UI, logs and notifications.
+            title=ENTRY_TITLE,
             data={**data, CONF_SESSION_COOKIES: cookies},
             options={CONF_SAVE_PASSWORD: save_password},
         )
