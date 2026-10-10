@@ -40,7 +40,15 @@ USMS asks for a captcha at every login, so the integration signs in once and the
 
 ### When USMS asks you to sign in again
 
-If the USMS session ends (site restart, long outage, Home Assistant offline for a while), the integration shows **Re-configuration required** under **Settings** → **Devices & Services**. Click **Reconfigure**, enter your password (or leave it blank if you chose **Remember password**), then type the captcha.
+If the USMS session ends, the integration shows **Re-configuration required** under **Settings** → **Devices & Services**. Click **Reconfigure**, enter your password (or leave it blank if you chose **Remember password**), then type the captcha.
+
+USMS allows **one session per account**, so the session ends when:
+
+- you log in to USMS anywhere else, such as the website or app;
+- the USMS site restarts;
+- Home Assistant is offline for a while.
+
+If you use the USMS website or app regularly, expect to sign in again in Home Assistant afterwards. Turning on **Remember password** makes that a captcha-only step.
 
 It also creates a **UZMZ — Sign-in required** notification (ID `uzmz_reauth_required`), which clears itself once you have signed in again. To get it on your phone, add an automation (replace `notify.mobile_app_your_phone` with your notify service):
 
