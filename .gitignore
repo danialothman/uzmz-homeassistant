@@ -21,3 +21,4 @@ Thumbs.db
 .env
 .live_test/
 *.log
+.pytest_cache/

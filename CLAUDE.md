@@ -20,6 +20,9 @@ custom_components/uzmz/
 lovelace-dashboard.yaml - Pre-configured dashboard
 hacs.json            - HACS metadata
 LICENSE              - MIT
+custom_components/uzmz/brand/ - Icons (HACS reads these; original design, no USMS branding)
+tests/               - pytest suite for api.py (no HA needed)
+.github/workflows/validate.yml - hassfest, HACS and tests
 ```
 
 ## Architecture
@@ -42,9 +45,11 @@ LICENSE              - MIT
 
 ## Development
 
-- No test suite, CI/CD, or build system
+- Tests: `pytest` (`pip install -r requirements_test.txt`) runs `tests/test_api.py`, which covers the USMS client (login stages, errors, parsing) against synthetic pages, without Home Assistant
+- CI (`.github/workflows/validate.yml`): hassfest, HACS validation and the tests on every push and PR, plus weekly
+- No build system
 - No `pyproject.toml` or `setup.py`
-- Testing is manual against a live HA instance
+- End-to-end testing is manual against a live HA instance or with `scripts/live_test.py`
 - Debug logging: set `custom_components.uzmz: debug` in HA logger config
 
 ## Commands
