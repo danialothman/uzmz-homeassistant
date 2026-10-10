@@ -1,0 +1,5 @@
+{
+  "name": "UZMZ Utility Meter Monitor",
+  "country": ["BN"],
+  "homeassistant": "2024.11.0"
+}

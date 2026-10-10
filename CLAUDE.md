@@ -18,6 +18,8 @@ custom_components/uzmz/
   strings.json      - UI strings
   translations/en.json - English translations
 lovelace-dashboard.yaml - Pre-configured dashboard
+hacs.json            - HACS metadata
+LICENSE              - MIT
 ```
 
 ## Architecture

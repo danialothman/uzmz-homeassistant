@@ -1,48 +1,41 @@
 # UZMZ Home Assistant Integration
 
-A Home Assistant custom component for monitoring utility meters (electric and water) from USMS (Utility Smart Meter System) in Brunei.
+A Home Assistant custom integration for monitoring prepaid electric and water meters on USMS (Utility Smart Meter System) in Brunei.
+
+> **Unofficial.** This is an independent open-source project. It is not affiliated with, endorsed by or supported by USMS or any utility provider. It reads the same pages you see when you log in to the USMS website. Use it at your own risk.
 
 ## Features
 
-- 🔌 **Electric Meter Monitoring**: Track remaining units (kWh), balance, status, and last update time
-- 💧 **Water Meter Monitoring**: Track remaining units (m³), balance, status, and last update time
-- 📊 **Historical Data**: All sensor data stored in Home Assistant database for trending
-- 🔄 **Configurable Updates**: Set custom polling intervals (default: 1 hour)
-- 🎨 **Beautiful Dashboard**: Pre-configured Lovelace dashboard with gauges, graphs, and statistics
-- 🔔 **Alert Support**: Create automations for low balance notifications
-- ⚙️ **UI Configuration**: Easy setup through Home Assistant UI
+- 🔌 **Electric meter**: remaining units (kWh), balance (BND), meter status and USMS reading date
+- 💧 **Water meter**: remaining units (m³), balance (BND), meter status and USMS reading date
+- 🔐 **Captcha-aware login**: you solve the USMS captcha once in the Home Assistant UI, then the integration keeps the session alive
+- 🔔 **Sign-in alerts**: a notification when USMS ends the session and you need to sign in again
+- 📊 **History**: all sensors are recorded by Home Assistant for graphs and statistics
+- 🔄 **Configurable polling**: default every hour
 
 ## Installation
 
-### Method 1: Manual Installation
+### HACS (recommended)
 
-1. Copy the `custom_components/uzmz` directory to your Home Assistant `custom_components` directory:
-   ```bash
-   cp -r custom_components/uzmz /config/custom_components/
-   ```
+1. In Home Assistant, open **HACS** → ⋮ → **Custom repositories**.
+2. Add `https://github.com/danialothman/uzmz-homeassistant` with the type **Integration**.
+3. Search for **UZMZ Utility Meter Monitor** in HACS and download it.
+4. Restart Home Assistant.
 
-2. Restart Home Assistant
+### Manual
 
-3. Go to **Settings** → **Devices & Services** → **Add Integration** → Search for "UZMZ"
-
-4. Follow the configuration steps
-
-### Method 2: HACS Installation (Coming Soon)
-
-This integration will be submitted to HACS for easier installation.
+1. Copy `custom_components/uzmz` into your Home Assistant `config/custom_components/` folder.
+2. Restart Home Assistant.
 
 ## Configuration
 
-### Through UI (Recommended)
+1. Go to **Settings** → **Devices & Services** → **Add Integration** and search for **UZMZ**.
+2. Enter your USMS login:
+   - **IC Number** and **Password**: the ones you use on the USMS website
+   - **Base URL**: optional, defaults to `https://www.usms.com.bn/SmartMeter/`
+3. Type the captcha shown in the next step.
 
-1. Navigate to **Settings** → **Devices & Services**
-2. Click **Add Integration**
-3. Search for "UZMZ Utility Meter Monitor"
-4. Enter your credentials:
-   - **IC Number**: Your IC number for USMS login
-   - **Password**: Your USMS password
-   - **Base URL**: (Optional) Default is `https://www.usms.com.bn/SmartMeter/`
-5. Type the captcha shown in the next step. USMS asks for a captcha at every login, so the integration signs in once and then keeps that session alive.
+USMS asks for a captcha at every login, so the integration signs in once and then keeps that session alive. It never logs in on its own. USMS locks an account after 5 failed logins, so it only ever submits a login when you do.
 
 ### When USMS asks you to sign in again
 
@@ -66,124 +59,85 @@ automation:
             url: /config/integrations/integration/uzmz
 ```
 
-### Through configuration.yaml (Alternative)
+### Options
 
-```yaml
-# Not recommended - Use UI configuration instead
-# This method may be deprecated in future versions
-```
-
-## Setting Up the Dashboard
-
-1. Copy the contents of `lovelace-dashboard.yaml`
-
-2. In Home Assistant, go to **Settings** → **Dashboards**
-
-3. Click **Add Dashboard** and create a new dashboard called "Utility Meters"
-
-4. Open the dashboard and click **Edit Dashboard** (three dots menu)
-
-5. Click **Raw Configuration Editor**
-
-6. Paste the dashboard configuration
-
-7. Save and enjoy your new utility meter dashboard!
+To change the polling interval (300–86400 seconds), go to **Settings** → **Devices & Services** → **UZMZ** → **Configure**.
 
 ## Sensors
 
-The integration creates the following sensors:
+Entity IDs are generated from the device and sensor names. These are the defaults.
 
-### Electric Meter
-- `sensor.uzmz_electric_remaining_units` - Remaining electricity units (kWh)
-- `sensor.uzmz_electric_remaining_balance` - Remaining balance (BND)
-- `sensor.uzmz_electric_status` - Meter status
-- `sensor.uzmz_electric_last_updated` - Last update timestamp
+| Electric meter | Water meter | |
+|---|---|---|
+| `sensor.uzmz_electric_meter_electric_remaining_units` | `sensor.uzmz_water_meter_water_remaining_units` | Remaining units (kWh / m³) |
+| `sensor.uzmz_electric_meter_electric_remaining_balance` | `sensor.uzmz_water_meter_water_remaining_balance` | Remaining balance (BND) |
+| `sensor.uzmz_electric_meter_electric_meter_status` | `sensor.uzmz_water_meter_water_meter_status` | Meter status, e.g. `ACTIVE` |
+| `sensor.uzmz_electric_meter_electric_last_updated` | `sensor.uzmz_water_meter_water_last_updated` | Date of the USMS reading |
 
-### Water Meter
-- `sensor.uzmz_water_remaining_units` - Remaining water units (m³)
-- `sensor.uzmz_water_remaining_balance` - Remaining balance (BND)
-- `sensor.uzmz_water_status` - Meter status
-- `sensor.uzmz_water_last_updated` - Last update timestamp
+The integration also has `sensor.uzmz_integration_last_refresh` (last successful sync) and `sensor.uzmz_integration_next_refresh`.
 
-## Automation Examples
+USMS reports what is **left** on a prepaid meter, not what was used. The remaining-units sensors therefore can't be added to the Energy dashboard directly, because they drop as you use power and jump at every top-up.
 
-### Low Balance Alert
+## Dashboard
 
-```yaml
-automation:
-  - alias: "Low Electric Balance Alert"
-    trigger:
-      platform: numeric_state
-      entity_id: sensor.uzmz_electric_remaining_balance
-      below: 20
-    action:
-      service: notify.mobile_app_your_phone
-      data:
-        title: "⚡ Low Electric Balance"
-        message: "Your electric meter balance is {{ states('sensor.uzmz_electric_remaining_balance') }} BND"
-        
-  - alias: "Low Water Balance Alert"
-    trigger:
-      platform: numeric_state
-      entity_id: sensor.uzmz_water_remaining_balance
-      below: 20
-    action:
-      service: notify.mobile_app_your_phone
-      data:
-        title: "💧 Low Water Balance"
-        message: "Your water meter balance is {{ states('sensor.uzmz_water_remaining_balance') }} BND"
-```
+`lovelace-dashboard.yaml` is a ready-made dashboard. Create a new dashboard under **Settings** → **Dashboards**, open it, choose **Edit** → ⋮ → **Raw configuration editor**, and paste the file in.
 
-### Daily Usage Report
+## Automation examples
+
+### Low balance alert
+
+The thresholds below match the USMS SMS alerts (electric 15 BND, water 5 BND).
 
 ```yaml
 automation:
-  - alias: "Daily Utility Report"
-    trigger:
-      platform: time
-      at: "20:00:00"
-    action:
-      service: notify.mobile_app_your_phone
-      data:
-        title: "Daily Utility Report"
-        message: |
-          Electric: {{ states('sensor.uzmz_electric_remaining_units') }} kWh ({{ states('sensor.uzmz_electric_remaining_balance') }} BND)
-          Water: {{ states('sensor.uzmz_water_remaining_units') }} m³ ({{ states('sensor.uzmz_water_remaining_balance') }} BND)
+  - alias: "UZMZ low balance"
+    triggers:
+      - trigger: numeric_state
+        entity_id: sensor.uzmz_electric_meter_electric_remaining_balance
+        below: 15
+        id: Electric
+      - trigger: numeric_state
+        entity_id: sensor.uzmz_water_meter_water_remaining_balance
+        below: 5
+        id: Water
+    conditions:
+      # Coming back from unavailable (e.g. after a sign-in) isn't a new drop.
+      - condition: template
+        value_template: "{{ trigger.from_state.state not in ['unavailable', 'unknown'] }}"
+    actions:
+      - action: notify.mobile_app_your_phone
+        data:
+          title: "UZMZ — {{ trigger.id }} balance low"
+          message: "{{ trigger.id }} balance is {{ trigger.to_state.state }} BND. Time to top up."
 ```
 
-## Energy Dashboard Integration
+### Daily report
 
-To add electric meter to Home Assistant's Energy Dashboard:
-
-1. Go to **Settings** → **Dashboards** → **Energy**
-2. Click **Add Consumption**
-3. Select `sensor.uzmz_electric_remaining_units`
-4. Configure as needed
-
-## Options
-
-You can configure the update interval in the integration options:
-
-1. Go to **Settings** → **Devices & Services**
-2. Find the UZMZ integration
-3. Click **Configure**
-4. Set the update interval (300-86400 seconds)
+```yaml
+automation:
+  - alias: "UZMZ daily report"
+    triggers:
+      - trigger: time
+        at: "20:00:00"
+    actions:
+      - action: notify.mobile_app_your_phone
+        data:
+          title: "Daily utility report"
+          message: >
+            Electric: {{ states('sensor.uzmz_electric_meter_electric_remaining_units') }} kWh
+            ({{ states('sensor.uzmz_electric_meter_electric_remaining_balance') }} BND)
+            Water: {{ states('sensor.uzmz_water_meter_water_remaining_units') }} m³
+            ({{ states('sensor.uzmz_water_meter_water_remaining_balance') }} BND)
+```
 
 ## Troubleshooting
 
-### Authentication Failed
-- Verify your IC number and password
-- Check if you can login to the USMS website directly
-- Ensure your account is active
+- **Invalid credentials**: check that you can log in on the USMS website with the same IC number and password. Stop after a couple of failures, because USMS locks the account after 5.
+- **Wrong captcha**: a new captcha is shown automatically; type the new one.
+- **No data or sensors unavailable**: check the Home Assistant logs and that the USMS website is up. If the session ended, follow [When USMS asks you to sign in again](#when-usms-asks-you-to-sign-in-again).
+- **The integration broke after a USMS website change**: please [open an issue](https://github.com/danialothman/uzmz-homeassistant/issues). Developers can use `scripts/live_test.py` to test the client against the live site (see `CLAUDE.md`).
 
-### No Data Available
-- Check your internet connection
-- Verify the USMS website is accessible
-- Check Home Assistant logs for errors
-
-## Debug Logging
-
-Add this to your `configuration.yaml` to enable debug logging:
+### Debug logging
 
 ```yaml
 logger:
@@ -192,23 +146,13 @@ logger:
     custom_components.uzmz: debug
 ```
 
-## Support
-
-For issues, feature requests, or questions:
-- Check the [Home Assistant logs](https://www.home-assistant.io/docs/configuration/troubleshooting/#enabling-debug-logging)
-- Open an issue on [GitHub](https://github.com/danial/uzmz-homeassistant)
-
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests.
+Issues and pull requests are welcome at [github.com/danialothman/uzmz-homeassistant](https://github.com/danialothman/uzmz-homeassistant).
 
 ## License
 
-This project is licensed under the MIT License.
-
-## Disclaimer
-
-This integration is not affiliated with or endorsed by USMS or any utility provider. Use at your own risk.
+[MIT](LICENSE)
 
 ## Credits
 
