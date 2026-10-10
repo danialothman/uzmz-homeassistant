@@ -12,11 +12,11 @@ the usage the reports showed at that moment. Later,
 Comparing what the reports show (rather than counting hours from the login
 time) also handles data USMS posts late, like water's daily figures.
 
-Electricity is charged with the published residential tariff, which is
-tiered by monthly consumption, so each kWh is costed in the band it falls in
-(using the month-to-date total from the reports). Water has no tariff here;
-its rate is learned from the change between two login snapshots, and until
-two are available the snapshot's own balance-per-unit ratio is used.
+Electricity and water are charged with their published domestic tariffs,
+which are tiered by monthly consumption, so each unit is costed in the band
+it falls in (using the month-to-date total from the reports). Without a
+tariff, a rate learned from the change between two login snapshots is used,
+and until two are available the snapshot's own balance-per-unit ratio.
 """
 
 from __future__ import annotations
@@ -39,6 +39,15 @@ ELECTRIC_TARIFF: tuple[tuple[Optional[float], float], ...] = (
     (2000, 0.08),
     (4000, 0.10),
     (None, 0.12),
+)
+
+# Domestic water, B$ per m3 by monthly consumption, as listed by USMS
+# (https://www.usms.com.bn/web/tariffs/); the 54.54 m3 / B$0.11 first band
+# also appears in PWD's "Water Facts". The band is 54.54 m3 per unit in the
+# building; a house is one unit.
+WATER_TARIFF: tuple[tuple[Optional[float], float], ...] = (
+    (54.54, 0.11),
+    (None, 0.44),
 )
 
 

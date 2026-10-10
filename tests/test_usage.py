@@ -184,3 +184,32 @@ def test_older_anchor_counts_only_days_it_covered():
 def test_new_session_window_reaches_the_first_of_the_month():
     assert usage.new_session_start(TODAY) == dt.date(2026, 10, 1)
     assert usage.new_session_start(dt.date(2026, 10, 2)) == dt.date(2026, 9, 29)
+
+
+# ----- water tariff -----
+
+
+def test_water_tariff_bands():
+    assert round(usage.tariff_cost(54.54, usage.WATER_TARIFF), 4) == 5.9994
+    assert round(usage.tariff_cost(64.54, usage.WATER_TARIFF), 4) == 10.3994  # +10 m3 at 0.44
+    assert usage.marginal_rate(10, usage.WATER_TARIFF) == 0.11
+    assert usage.marginal_rate(60, usage.WATER_TARIFF) == 0.44
+
+
+def test_water_matches_the_snapshot_ratio():
+    # 3.04 BND for 27.667 m3 is the first-band rate.
+    assert round(3.04 / 27.667, 2) == usage.WATER_TARIFF[0][1]
+
+
+def test_water_balance_crossing_the_first_band():
+    # 50 m3 so far this month, then 10 m3 more, posted a day late.
+    before = _month({1: 50.0})
+    anchor = usage.make_anchor(27.667, 3.04, TODAY, before, False, start=dt.date(2026, 10, 1))
+    start, _ = usage.window_start(anchor, TODAY)
+    now = {**before, "2026-10-09": 10.0}
+
+    current = usage.current_readings(anchor, now, start, rate=None, tariff=usage.WATER_TARIFF)
+
+    # 4.54 m3 at 0.11 + 5.46 m3 at 0.44 = 2.9018
+    assert current["remaining_balance"] == 0.14
+    assert current["rate"] == 0.44

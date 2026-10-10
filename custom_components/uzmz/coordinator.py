@@ -24,6 +24,7 @@ from .const import (
 )
 from .usage import (
     ELECTRIC_TARIFF,
+    WATER_TARIFF,
     current_readings,
     learn_rate,
     make_anchor,
@@ -168,8 +169,8 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 anchors[meter] = anchor
 
-            # Electricity has a published tiered tariff; water uses a learned rate.
-            tariff = ELECTRIC_TARIFF if meter == "electric" else None
+            # Both have published tariffs tiered by monthly use.
+            tariff = {"electric": ELECTRIC_TARIFF, "water": WATER_TARIFF}.get(meter)
             current = current_readings(anchor, usage_now, start, rates.get(meter), tariff)
             readings.update(current)
             readings.update(

@@ -130,7 +130,14 @@ USMS's home page keeps showing the readings from the moment you signed in, for a
      | above 4,000 kWh | B$0.12/kWh |
 
      Each kWh is charged in the band it falls in, using this month's total so far from the reports. The count restarts on the 1st.
-   - **Water** uses a rate learned from the change between two sign-ins. Until then it uses the average balance per unit.
+   - **Water** is costed with the domestic water tariff [listed by USMS](https://www.usms.com.bn/web/tariffs/):
+
+     | Monthly usage | Rate |
+     |---|---|
+     | first 54.54 m³ | B$0.11/m³ |
+     | above 54.54 m³ | B$0.44/m³ |
+
+     The band is per unit in the building, so UZMZ assumes a house (one unit).
 
 The balance sensors show how each reading was calculated in their attributes: `estimated`, `balance_method` (`tariff`, `learned rate` or `average rate`), `used_since_sign_in`, `month_to_date`, `sign_in_units`, `sign_in_balance`, `sign_in_date`, `rate` (for electricity, the current band's rate), `rate_is_average`. `approximate` is true when the sign-in time wasn't known, for example right after upgrading from an older version.
 
