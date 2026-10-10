@@ -23,10 +23,11 @@ from .const import (
     KEEPALIVE_INTERVAL,
 )
 from .usage import (
-    LOOKBACK_DAYS,
+    ELECTRIC_TARIFF,
     current_readings,
     learn_rate,
     make_anchor,
+    new_session_start,
     parse_number,
     window_start,
 )
@@ -144,11 +145,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 anchor["units"] != units or anchor["balance"] != balance
             )
             new_session = fresh or anchor is None or snapshot_changed
-            start = (
-                today - timedelta(days=LOOKBACK_DAYS)
-                if new_session
-                else window_start(anchor, today)[0]
-            )
+            start = new_session_start(today) if new_session else window_start(anchor, today)[0]
             try:
                 usage_now = await self.hass.async_add_executor_job(
                     self.client.fetch_usage, path, start, today, meter == "electric"
@@ -167,10 +164,13 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 anchor = make_anchor(
                     units, balance, today, usage_now,
                     approximate=(legacy or snapshot_changed) and not fresh,
+                    start=start,
                 )
                 anchors[meter] = anchor
 
-            current = current_readings(anchor, usage_now, start, rates.get(meter))
+            # Electricity has a published tiered tariff; water uses a learned rate.
+            tariff = ELECTRIC_TARIFF if meter == "electric" else None
+            current = current_readings(anchor, usage_now, start, rates.get(meter), tariff)
             readings.update(current)
             readings.update(
                 {

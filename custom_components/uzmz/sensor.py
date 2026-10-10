@@ -253,6 +253,8 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
             "sign_in_date",
             "rate",
             "rate_is_average",
+            "balance_method",
+            "month_to_date",
             "approximate",
         ):
             if key in meter_data:

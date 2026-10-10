@@ -119,13 +119,20 @@ USMS's home page keeps showing the readings from the moment you signed in, for a
    - electricity hour by hour;
    - water day by day, including days USMS posts late.
 3. Shows **remaining units = units at sign-in − usage since**. This matches what USMS shows after a fresh sign-in.
-4. Shows **balance = balance at sign-in − usage since × rate**. This is an **estimate**:
-   - The rate (BND per unit) is learned from the change between two sign-ins.
-   - Until then, the average balance-per-unit is used, which is less accurate.
-   - Tariff tiers change the real rate, so the estimate can drift.
-   - The exact figure comes back at every sign-in.
+4. Shows **balance = balance at sign-in − cost of the usage since**. This is an **estimate**, and it returns to USMS's exact figure at every sign-in.
+   - **Electricity** is costed with the [DES residential tariff](https://www.des.gov.bn/electricity-tariff/):
 
-The balance sensors show how each reading was calculated in their attributes: `estimated`, `used_since_sign_in`, `sign_in_units`, `sign_in_balance`, `sign_in_date`, `rate`, `rate_is_average`. `approximate` is true when the sign-in time wasn't known, for example right after upgrading from an older version.
+     | Monthly usage | Rate |
+     |---|---|
+     | 1–600 kWh | B$0.01/kWh |
+     | 601–2,000 kWh | B$0.08/kWh |
+     | 2,001–4,000 kWh | B$0.10/kWh |
+     | above 4,000 kWh | B$0.12/kWh |
+
+     Each kWh is charged in the band it falls in, using this month's total so far from the reports. The count restarts on the 1st.
+   - **Water** uses a rate learned from the change between two sign-ins. Until then it uses the average balance per unit.
+
+The balance sensors show how each reading was calculated in their attributes: `estimated`, `balance_method` (`tariff`, `learned rate` or `average rate`), `used_since_sign_in`, `month_to_date`, `sign_in_units`, `sign_in_balance`, `sign_in_date`, `rate` (for electricity, the current band's rate), `rate_is_average`. `approximate` is true when the sign-in time wasn't known, for example right after upgrading from an older version.
 
 **After a top-up**, the readings don't include it until the next sign-in. To sign in straight away, go to **Settings** → **Devices & Services** → **UZMZ** → ⋮ → **Reconfigure** and solve the captcha.
 
