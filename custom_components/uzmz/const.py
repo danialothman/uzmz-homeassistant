@@ -3,6 +3,9 @@
 from datetime import timedelta
 
 DOMAIN = "uzmz"
+# Config entry title. Never include the IC number: titles appear in the UI,
+# in log messages and in notifications.
+ENTRY_TITLE = "UZMZ"
 
 # Configuration keys
 CONF_IC_NUMBER = "ic_number"

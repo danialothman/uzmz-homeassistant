@@ -12,12 +12,14 @@ from .api import USMSClient
 from .const import (
     DOMAIN,
     CONF_BASE_URL,
+    CONF_IC_NUMBER,
     CONF_PASSWORD,
     CONF_SAVE_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_SESSION_COOKIES,
     DEFAULT_BASE_URL,
     DEFAULT_SCAN_INTERVAL,
+    ENTRY_TITLE,
 )
 from .coordinator import UZMZDataUpdateCoordinator
 
@@ -35,6 +37,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data = dict(entry.data)
         data.pop(CONF_PASSWORD)
         hass.config_entries.async_update_entry(entry, data=data)
+
+    # Entries used to be titled "UZMZ <IC number>", which put the IC number in
+    # the UI, logs and notifications. Rename them unless the user renamed them.
+    if entry.title == f"{ENTRY_TITLE} {entry.data.get(CONF_IC_NUMBER)}":
+        hass.config_entries.async_update_entry(entry, title=ENTRY_TITLE)
 
     # Get configuration from entry
     base_url = entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL)

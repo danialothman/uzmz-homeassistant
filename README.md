@@ -75,7 +75,7 @@ What is stored, in Home Assistant's own configuration storage (`config/.storage/
 
 | Item | Stored? | Why |
 |---|---|---|
-| IC number | Yes | Identifies your USMS account |
+| IC number | Yes | Needed to log in. It is never shown: not in the integration name, notifications, forms or logs. |
 | USMS session cookie | Yes | Lets readings continue after a Home Assistant restart without solving a new captcha. While it is valid, it gives the same access as being logged in on the USMS website. |
 | Password | **Only if you turn on Remember password** (off by default) | Lets you sign in again with just the captcha |
 
