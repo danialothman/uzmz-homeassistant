@@ -136,7 +136,9 @@ async def async_setup_entry(
         UZMZIntegrationStatusSensor(coordinator, "next_refresh"),
     ])
 
-    async_add_entities(sensors, True)
+    # No update_before_add: the coordinator already fetched in setup, and
+    # updating each entity would make every one request another refresh.
+    async_add_entities(sensors)
 
 
 class UZMZSensor(CoordinatorEntity, SensorEntity):
