@@ -12,7 +12,7 @@
         "data_description": {
           "ic_number": "Your IC number used to login to USMS",
           "password": "Your USMS account password",
-          "base_url": "The USMS website URL (default: https://www.usms.com.bn/SmartMeter/)"
+          "base_url": "The USMS SmartMeter website address. Leave the default unless USMS moves the site."
         }
       },
       "captcha": {
