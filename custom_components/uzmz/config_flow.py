@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.config_entries import SOURCE_REAUTH, ConfigFlowResult
+from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_RECONFIGURE, ConfigFlowResult
 from homeassistant.core import callback
 
 from .api import (
@@ -33,6 +33,7 @@ from .const import (
     CONF_IC_NUMBER,
     CONF_PASSWORD,
     CONF_BASE_URL,
+    CONF_FRESH_SESSION,
     CONF_SAVE_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_SESSION_COOKIES,
@@ -110,6 +111,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._data = dict(entry_data)
         return await self.async_step_reauth_confirm()
 
+    async def async_step_reconfigure(
+        self, user_input: Optional[Dict[str, Any]] = None
+    ) -> ConfigFlowResult:
+        """Sign in again on request, e.g. to pick up a top-up straight away."""
+        if user_input is None:
+            self._data = dict(self._get_reconfigure_entry().data)
+        return await self._async_sign_in_again("reconfigure", user_input)
+
     async def async_step_reauth_confirm(
         self, user_input: Optional[Dict[str, Any]] = None
     ) -> ConfigFlowResult:
@@ -118,6 +127,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         HA starts this flow as soon as the session expires, possibly hours
         before anyone opens it, so nothing is submitted until the user does.
         """
+        return await self._async_sign_in_again("reauth_confirm", user_input)
+
+    async def _async_sign_in_again(
+        self, step_id: str, user_input: Optional[Dict[str, Any]]
+    ) -> ConfigFlowResult:
+        """Ask for the password if needed, then start a login for the entry."""
         errors: Dict[str, str] = {}
         site_message = ""
 
@@ -131,7 +146,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self._async_finish()
             errors["base"] = error
 
-        return self._show_reauth_form(errors, site_message)
+        return self._show_sign_in_again_form(step_id, errors, site_message)
 
     async def async_step_captcha(
         self, user_input: Optional[Dict[str, Any]] = None
@@ -148,9 +163,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self._async_finish()
             if error == "invalid_auth":
                 # Password rejected: back to the step where it can be fixed.
-                if self.source == SOURCE_REAUTH:
+                if self.source in (SOURCE_REAUTH, SOURCE_RECONFIGURE):
                     self._data.pop(CONF_PASSWORD, None)  # don't reuse a rejected one
-                    return self._show_reauth_form({"base": error}, site_message)
+                    step_id = "reauth_confirm" if self.source == SOURCE_REAUTH else "reconfigure"
+                    return self._show_sign_in_again_form(step_id, {"base": error}, site_message)
                 return self._show_user_form(self._data, {"base": error}, site_message)
             errors["base"] = error
 
@@ -164,13 +180,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    def _show_reauth_form(
-        self, errors: Dict[str, str], site_message: str
+    def _show_sign_in_again_form(
+        self, step_id: str, errors: Dict[str, str], site_message: str
     ) -> ConfigFlowResult:
         # Without a saved password, the user has to type it again.
         password_key = vol.Optional if self._data.get(CONF_PASSWORD) else vol.Required
         return self.async_show_form(
-            step_id="reauth_confirm",
+            step_id=step_id,
             data_schema=vol.Schema({password_key(CONF_PASSWORD): str}),
             errors=errors,
             description_placeholders={"site_message": site_message},
@@ -180,9 +196,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def _async_finish(self) -> ConfigFlowResult:
         """Store the logged-in session (and the password only if opted in)."""
         cookies = self._client.get_cookies()
-        if self.source == SOURCE_REAUTH:
-            entry = self._get_reauth_entry()
-            data = {**entry.data, CONF_SESSION_COOKIES: cookies}
+        if self.source in (SOURCE_REAUTH, SOURCE_RECONFIGURE):
+            entry = (
+                self._get_reauth_entry()
+                if self.source == SOURCE_REAUTH
+                else self._get_reconfigure_entry()
+            )
+            # A new session: the coordinator re-anchors its usage tracking.
+            data = {**entry.data, CONF_SESSION_COOKIES: cookies, CONF_FRESH_SESSION: True}
             data.pop(CONF_PASSWORD, None)
             if entry.options.get(CONF_SAVE_PASSWORD, False):
                 data[CONF_PASSWORD] = self._data[CONF_PASSWORD]
@@ -197,7 +218,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             # Not the IC number: titles show in the UI, logs and notifications.
             title=ENTRY_TITLE,
-            data={**data, CONF_SESSION_COOKIES: cookies},
+            data={**data, CONF_SESSION_COOKIES: cookies, CONF_FRESH_SESSION: True},
             options={CONF_SAVE_PASSWORD: save_password},
         )
 

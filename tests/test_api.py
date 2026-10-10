@@ -10,7 +10,7 @@ from uzmz.const import ELEM_CAPTCHA_ERROR, FORM_CAPTCHA, FORM_PASSWORD, FORM_USE
 BASE_URL = "https://usms.example/SmartMeter/"
 
 
-def _card(img: str, fields: dict[str, str], extra_first: bool = False) -> str:
+def _card(img: str, fields: dict[str, str], extra_first: bool = False, p: str = "") -> str:
     """A DevExpress card: caption spans followed by their value cells."""
     rows = []
     if extra_first:
@@ -22,10 +22,16 @@ def _card(img: str, fields: dict[str, str], extra_first: bool = False) -> str:
         f'<td class="dxflNestedControlCell">  {value}  </td></tr>'
         for i, (name, value) in enumerate(rows)
     )
+    links = (
+        f'<tr><td><a href="Account?p={p}">Account</a>'
+        f'<a href="Report/UsageHistory?p={p}">Usage</a></td></tr>'
+        if p
+        else ""
+    )
     return (
         '<td class="dxcvCard"><table>'
         f'<tr><td><img id="ASPxCardView1_DXCardLayout0_img" src="{img}"></td></tr>'
-        f"{items}</table></td>"
+        f"{items}{links}</table></td>"
     )
 
 
@@ -40,6 +46,7 @@ METER_PAGE = (
             "Last Updated": "09/10/2026",
         },
         extra_first=True,
+        p="RUxFQw==",
     )
     + _card(
         "Images/WaterPipe.png",
@@ -115,12 +122,14 @@ def test_meter_cards_are_parsed_by_caption():
             "remaining_unit": "2477.399 kWh",
             "remaining_balance": "$224.59",
             "last_updated": "09/10/2026",
+            "usage_path": "Report/UsageHistory?p=RUxFQw==",
         },
         "water": {
             "status": "ACTIVE",
             "remaining_unit": "27.667 m³",
             "remaining_balance": "$3.04",
             "last_updated": "08/10/2026",
+            "usage_path": None,
         },
     }
 
@@ -249,3 +258,84 @@ def test_restored_cookies_use_site_host():
     c = api.USMSClient(BASE_URL, cookies={"ASP.NET_SessionId": "abc"})
     (cookie,) = list(c.session.cookies)
     assert (cookie.domain, cookie.path) == ("usms.example", "/")
+
+
+# ----- usage reports -----
+
+
+def report_page(rows: list[tuple[str, str]] = (), error: str = "") -> str:
+    """A Usage History page: the search form plus its result grid."""
+    data_rows = "".join(
+        f'<tr class="dxgvDataRow"><td class="dxgv">{a}</td><td class="dxgv">{b}</td></tr>'
+        for a, b in rows
+    )
+    return f"""
+    <html><body><form method="post" action="./UsageHistory?p=RUxFQw%3d%3d">
+      <input type="hidden" name="__VIEWSTATE" value="vs">
+      <input type="hidden" name="cboType_VI" value="0">
+      <input type="text" name="cboType" value="Monthly (Max 6 months)">
+      <input type="text" name="cboDateFrom" value="October 2026">
+      <input type="text" name="cboDateTo" value="October 2026">
+      <input type="submit" name="btnRefresh" value="Search">
+      <span id="pcErr_lblErrMsg">{error}</span>
+      <table id="ASPxPageControl1_grid_DXMainTable">
+        <tr class="dxgvArm"><td></td><td></td></tr>{data_rows}
+      </table>
+    </form></body></html>
+    """
+
+
+def test_usage_combines_daily_and_hourly_reports(client):
+    report_url = BASE_URL + "Report/UsageHistory?p=RUxFQw=="
+    client.responses = [
+        response(report_page(), url=report_url),
+        response(report_page([("08/10/2026", "105.547"), ("09/10/2026", "96.426")])),
+        response(report_page(), url=report_url),
+        response(report_page([("1", "3.920"), ("2", "4.063"), ("3", "1,000.5")])),
+    ]
+
+    usage = client.fetch_usage(
+        "Report/UsageHistory?p=RUxFQw==", api.dt.date(2026, 10, 8), api.dt.date(2026, 10, 10), hourly=True
+    )
+
+    assert usage == {"2026-10-08": 105.547, "2026-10-09": 96.426, "2026-10-10": 1008.483}
+    daily = client.requests[1][2]["data"]
+    assert (daily["cboType_VI"], daily["btnRefresh"]) == ("1", "Search")
+    # The server reads the raw date values: local midnight written as UTC ms.
+    assert daily["cboDateFrom_Raw"] == "1791417600000"  # 2026-10-08
+    assert daily["cboDateTo$State"] == '{"rawValue":"1791504000000"}'  # 2026-10-09, not today
+    assert client.requests[3][2]["data"]["cboType_VI"] == "3"
+
+
+def test_daily_only_meter_skips_hourly(client):
+    client.responses = [response(report_page()), response(report_page([("09/10/2026", "1.9")]))]
+    usage = client.fetch_usage(
+        "Report/UsageHistory?p=V0FU", api.dt.date(2026, 10, 7), api.dt.date(2026, 10, 10), hourly=False
+    )
+    assert usage == {"2026-10-09": 1.9}
+    assert len(client.requests) == 2
+
+
+def test_no_daily_request_when_starting_today(client):
+    client.responses = [response(report_page()), response(report_page([("1", "2.5")]))]
+    today = api.dt.date(2026, 10, 10)
+    assert client.fetch_usage("Report/UsageHistory?p=x", today, today, hourly=True) == {"2026-10-10": 2.5}
+
+
+def test_usage_report_error_is_raised(client):
+    client.responses = [
+        response(report_page()),
+        response(report_page(error="Date To must be smaller than the today's date")),
+    ]
+    with pytest.raises(api.SiteError, match="smaller than"):
+        client.fetch_usage(
+            "Report/UsageHistory?p=x", api.dt.date(2026, 10, 7), api.dt.date(2026, 10, 10), hourly=False
+        )
+
+
+def test_usage_report_detects_expired_session(client):
+    client.responses = [response("<html></html>", url=BASE_URL + "SessionExpire")]
+    with pytest.raises(api.SessionExpired):
+        client.fetch_usage(
+            "Report/UsageHistory?p=x", api.dt.date(2026, 10, 7), api.dt.date(2026, 10, 10), hourly=False
+        )

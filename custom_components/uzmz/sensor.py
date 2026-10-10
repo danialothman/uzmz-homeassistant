@@ -177,8 +177,11 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
         
         value = meter_data.get(self._sensor_type)
         
-        # Clean and convert numeric values
+        # Clean and convert numeric values (already numbers when they were
+        # brought up to date from the usage reports)
         if self._sensor_type in ["remaining_unit", "remaining_balance"]:
+            if isinstance(value, (int, float)):
+                return value
             if value:
                 try:
                     cleaned = "".join(c for c in str(value) if c in "0123456789.")
@@ -229,14 +232,32 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
 
         meter_data = self.coordinator.data.get(self._meter_type, {})
 
-        # Return all meter data as attributes
-        return {
+        attributes = {
             "meter_type": self._meter_type,
             "status": meter_data.get("status"),
             "remaining_unit": meter_data.get("remaining_unit"),
             "remaining_balance": meter_data.get("remaining_balance"),
             "last_updated": meter_data.get("last_updated"),
         }
+        # How the current readings were derived from the last sign-in (see
+        # usage.py). The balance is an estimate: sign-in balance minus usage
+        # since then at the learned rate.
+        if "live" in meter_data:
+            attributes["updated_from_usage_reports"] = meter_data["live"]
+        for key in (
+            "used_since_sign_in",
+            "sign_in_units",
+            "sign_in_balance",
+            "sign_in_date",
+            "rate",
+            "rate_is_average",
+            "approximate",
+        ):
+            if key in meter_data:
+                attributes[key] = meter_data[key]
+        if self._sensor_type == "remaining_balance" and meter_data.get("live"):
+            attributes["estimated"] = True
+        return attributes
 
 
 class UZMZIntegrationStatusSensor(CoordinatorEntity, SensorEntity):

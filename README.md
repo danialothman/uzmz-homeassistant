@@ -102,6 +102,25 @@ The integration also has `sensor.uzmz_integration_last_refresh` (last successful
 
 USMS reports what is **left** on a prepaid meter, not what was used. The remaining-units sensors therefore can't be added to the Energy dashboard directly, because they drop as you use power and jump at every top-up.
 
+### How readings stay current
+
+USMS's home page keeps showing the readings from the moment you signed in, for as long as the session lasts. Its usage reports, however, are live. So UZMZ:
+
+1. Records the remaining units and balance at sign-in, together with the usage the reports show at that moment.
+2. On every update, adds up the usage reported since then:
+   - electricity hour by hour;
+   - water day by day, including days USMS posts late.
+3. Shows **remaining units = units at sign-in − usage since**. This matches what USMS shows after a fresh sign-in.
+4. Shows **balance = balance at sign-in − usage since × rate**. This is an **estimate**:
+   - The rate (BND per unit) is learned from the change between two sign-ins.
+   - Until then, the average balance-per-unit is used, which is less accurate.
+   - Tariff tiers change the real rate, so the estimate can drift.
+   - The exact figure comes back at every sign-in.
+
+The balance sensors show how each reading was calculated in their attributes: `estimated`, `used_since_sign_in`, `sign_in_units`, `sign_in_balance`, `sign_in_date`, `rate`, `rate_is_average`. `approximate` is true when the sign-in time wasn't known, for example right after upgrading from an older version.
+
+**After a top-up**, the readings don't include it until the next sign-in. To sign in straight away, go to **Settings** → **Devices & Services** → **UZMZ** → ⋮ → **Reconfigure** and solve the captcha.
+
 ## Dashboard
 
 `lovelace-dashboard.yaml` is a ready-made dashboard. Create a new dashboard under **Settings** → **Dashboards**, open it, choose **Edit** → ⋮ → **Raw configuration editor**, and paste the file in.
