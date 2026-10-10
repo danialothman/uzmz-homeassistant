@@ -110,6 +110,12 @@ Entity IDs are generated from the device and sensor names. These are the default
 
 The integration also has `sensor.uzmz_integration_last_refresh` (last successful sync) and `sensor.uzmz_integration_next_refresh`.
 
+### When USMS updates its website
+
+USMS's home page shows a platform version (6.1.1001 as of October 2026), which UZMZ reads on every sync at no extra cost. It's the diagnostic sensor `sensor.uzmz_integration_usms_platform_version`. A new version usually means USMS changed its website, and the last change (the captcha login) broke the integration.
+
+When the version changes, UZMZ keeps working and creates a one-time **UZMZ — USMS website updated** notification (ID `uzmz_platform_changed`) naming the old and new versions. If readings then stop or look wrong, check HACS for an update or [open an issue](https://github.com/danialothman/uzmz-homeassistant/issues). To get it on your phone, use the [sign-in automation](#when-usms-asks-you-to-sign-in-again) with `notification_id: uzmz_platform_changed`.
+
 USMS reports what is **left** on a prepaid meter, not what was used. The remaining-units sensors therefore can't be added to the Energy dashboard directly, because they drop as you use power and jump at every top-up. For the Energy dashboard, use the consumption and cost sensors from the [helper sensors](#helper-sensors-optional).
 
 ### How readings stay current
@@ -247,7 +253,7 @@ automation:
 - **Invalid credentials**: check that you can log in on the USMS website with the same IC number and password. Stop after a couple of failures, because USMS locks the account after 5.
 - **Wrong captcha**: a new captcha is shown automatically; type the new one.
 - **No data or sensors unavailable**: check the Home Assistant logs and that the USMS website is up. If the session ended, follow [When USMS asks you to sign in again](#when-usms-asks-you-to-sign-in-again).
-- **The integration broke after a USMS website change**: please [open an issue](https://github.com/danialothman/uzmz-homeassistant/issues). Developers can use `scripts/live_test.py` to test the client against the live site (see `CLAUDE.md`).
+- **The integration broke after a USMS website change**: check whether `sensor.uzmz_integration_usms_platform_version` changed, then please [open an issue](https://github.com/danialothman/uzmz-homeassistant/issues). Developers can use `scripts/live_test.py` to test the client against the live site (see `CLAUDE.md`).
 
 ### Debug logging
 

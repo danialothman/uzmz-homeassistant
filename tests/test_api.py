@@ -239,6 +239,28 @@ def test_fetch_meter_data(client):
     assert [r[1] for r in client.requests] == [BASE_URL + "MainPage", BASE_URL + "Default.aspx"]
 
 
+def test_platform_version_is_read_from_main_page(client):
+    page = LOGGED_IN_PAGE.replace(
+        "</body>", '<span id="lblVer"><font size="1">Version 6.1.1001</font></span></body>'
+    )
+    client.responses = [response(page, url=BASE_URL + "MainPage")]
+    client.keep_alive()
+    assert client.platform_version == "6.1.1001"
+
+
+def test_platform_version_with_prefixed_id(client):
+    page = LOGGED_IN_PAGE.replace("</body>", '<span id="ASPxPanel2_lblVer">v6.2.5</span></body>')
+    client.responses = [response(page, url=BASE_URL + "MainPage")]
+    client.keep_alive()
+    assert client.platform_version == "6.2.5"
+
+
+def test_platform_version_missing(client):
+    client.responses = [response(LOGGED_IN_PAGE, url=BASE_URL + "MainPage")]
+    client.keep_alive()
+    assert client.platform_version is None
+
+
 def test_expired_session(client):
     client.responses = [response("<html></html>", url=BASE_URL + "SessionExpire")]
     with pytest.raises(api.SessionExpired):

@@ -12,6 +12,7 @@ whenever the login page is served.
 
 import datetime as dt
 import logging
+import re
 import threading
 import urllib.parse
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from .const import (
     ELEM_CAPTCHA_IMG,
     ELEM_IFRAME,
     ELEM_LOGIN_ERROR,
+    ELEM_PLATFORM_VERSION,
     ELEM_USERNAME_SPAN,
     FIELD_MAPPINGS,
     FORM_CAPTCHA,
@@ -101,6 +103,8 @@ class USMSClient:
             self.session.cookies.set(name, value, domain=host, path="/")
         self._login_form: Optional[Dict[str, str]] = None
         self._login_action: Optional[str] = None
+        # USMS platform version from the last MainPage read (None if not shown).
+        self.platform_version: Optional[str] = None
         # The coordinator's keep-alive and data fetch can overlap in the
         # executor; requests.Session is not safe for concurrent use.
         self._lock = threading.Lock()
@@ -299,6 +303,7 @@ class USMSClient:
         soup = BeautifulSoup(response.text, "html.parser")
         if "SessionExpire" in response.url or not soup.find("span", {"id": ELEM_USERNAME_SPAN}):
             raise SessionExpired("USMS session is no longer logged in")
+        self.platform_version = _parse_platform_version(soup)
         return soup
 
     def _get(self, url: str) -> requests.Response:
@@ -438,3 +443,12 @@ def _parse_usage_rows(html: str) -> list[tuple[str, float]]:
             except ValueError:
                 _LOGGER.debug("Skipping usage row %s", cells[:2])
     return rows
+
+
+def _parse_platform_version(soup: BeautifulSoup) -> Optional[str]:
+    """Return the version in MainPage's lblVer label (e.g. "6.1.1001"), if shown."""
+    label = soup.find(id=re.compile(rf"(^|_){ELEM_PLATFORM_VERSION}$"))
+    if not label:
+        return None
+    match = re.search(r"\d+(?:\.\d+)+", label.get_text(" ", strip=True))
+    return match.group(0) if match else None

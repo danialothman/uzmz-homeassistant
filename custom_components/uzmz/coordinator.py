@@ -15,12 +15,14 @@ from homeassistant.components.persistent_notification import async_create, async
 from .api import SessionExpired, USMSClient, USMSError
 from .const import (
     CONF_FRESH_SESSION,
+    CONF_PLATFORM_VERSION,
     CONF_SESSION_COOKIES,
     CONF_USAGE_ANCHORS,
     CONF_USAGE_RATES,
     DOMAIN,
     DEFAULT_SCAN_INTERVAL,
     KEEPALIVE_INTERVAL,
+    KNOWN_PLATFORM_VERSION,
 )
 from .usage import (
     ELECTRIC_TARIFF,
@@ -38,6 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 NOTIFICATION_ID = "uzmz_update_failure"
 # Fixed so automations can trigger on it (e.g. to push to a phone).
 REAUTH_NOTIFICATION_ID = "uzmz_reauth_required"
+PLATFORM_NOTIFICATION_ID = "uzmz_platform_changed"
 MAX_FAILURES_BEFORE_NOTIFY = 3
 FAILURE_RETRY_INTERVAL = timedelta(minutes=5)
 BRUNEI_TZ = ZoneInfo("Asia/Brunei")
@@ -114,6 +117,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 self._normal_update_interval,
             )
             self.update_interval = self._normal_update_interval
+        self._async_check_platform_version(usage_state)
         self._async_persist(usage_state)
         return data
 
@@ -231,6 +235,34 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             ),
             title="UZMZ — Sign-in required",
             notification_id=REAUTH_NOTIFICATION_ID,
+        )
+
+    @property
+    def platform_version(self) -> Optional[str]:
+        """USMS platform version from the last MainPage read."""
+        return self.client.platform_version
+
+    @callback
+    def _async_check_platform_version(self, state: Dict[str, Any]) -> None:
+        """Warn once when the USMS platform version changes; add it to state."""
+        current = self.client.platform_version
+        if not current:
+            return
+        previous = self.config_entry.data.get(CONF_PLATFORM_VERSION, KNOWN_PLATFORM_VERSION)
+        state[CONF_PLATFORM_VERSION] = current
+        if current == previous:
+            return
+        _LOGGER.warning("USMS platform version changed from %s to %s", previous, current)
+        async_create(
+            self.hass,
+            (
+                f"USMS updated its website from version {previous} to {current}.\n\n"
+                "UZMZ is still reading your meters. If readings stop or look wrong, "
+                "check for a UZMZ update in HACS, or report it on "
+                "[GitHub](https://github.com/danialothman/uzmz-homeassistant/issues)."
+            ),
+            title="UZMZ — USMS website updated",
+            notification_id=PLATFORM_NOTIFICATION_ID,
         )
 
     @callback
