@@ -223,7 +223,9 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         async_create(
             self.hass,
             (
-                "The USMS session has expired, so meter readings have stopped updating.\n\n"
+                "The USMS session has ended, so meter readings have stopped updating. "
+                "This happens whenever you sign in on the USMS website or app, "
+                "because USMS allows one session per account.\n\n"
                 "Open [Settings → Devices & services](/config/integrations/integration/uzmz), "
                 "choose **Reconfigure** on UZMZ and solve the captcha to sign in again."
             ),

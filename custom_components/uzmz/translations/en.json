@@ -26,7 +26,7 @@
       },
       "reauth_confirm": {
         "title": "Sign in to USMS again",
-        "description": "The USMS session has ended. Sign in again; you will be asked to solve a captcha next.\n\n{site_message}",
+        "description": "The USMS session has ended (signing in on the USMS website or app ends it). Sign in again; you will be asked to solve a captcha next.\n\n{site_message}",
         "data": {
           "password": "Password"
         },

@@ -26,7 +26,8 @@ views:
     - type: markdown
       content: '## ⚠️ Sign-in required
 
-        The USMS session expired, so readings have stopped. [Open UZMZ](/config/integrations/integration/uzmz),
+        The USMS session ended, so readings have stopped. This happens when you sign in
+        on the USMS website or app. [Open UZMZ](/config/integrations/integration/uzmz),
         choose **Reconfigure** and solve the captcha.'
       visibility:
       - condition: state

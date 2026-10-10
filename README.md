@@ -65,7 +65,7 @@ automation:
       - action: notify.mobile_app_your_phone
         data:
           title: "UZMZ — Sign-in required"
-          message: "The USMS session expired. Open Home Assistant and solve the captcha to resume meter readings."
+          message: "The USMS session ended (this happens when you sign in on the USMS website or app). Open Home Assistant and solve the captcha to resume meter readings."
           data:
             url: /config/integrations/integration/uzmz
 ```
