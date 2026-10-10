@@ -11,6 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -22,6 +23,7 @@ from .const import (
     ICON_CURRENCY,
     ICON_STATUS,
     ICON_UPDATE,
+    KNOWN_PLATFORM_VERSION,
     UNIT_KWH,
     UNIT_CUBIC_METER,
     UNIT_CURRENCY,
@@ -134,6 +136,7 @@ async def async_setup_entry(
     sensors.extend([
         UZMZIntegrationStatusSensor(coordinator, "last_refresh"),
         UZMZIntegrationStatusSensor(coordinator, "next_refresh"),
+        UZMZPlatformVersionSensor(coordinator),
     ])
 
     # No update_before_add: the coordinator already fetched in setup, and
@@ -310,6 +313,36 @@ class UZMZIntegrationStatusSensor(CoordinatorEntity, SensorEntity):
         Once we've ever had a successful refresh, treat them as available.
         """
         return self.coordinator.last_successful_refresh is not None
+
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        """Return device info for the integration-status device."""
+        return {
+            "identifiers": {(DOMAIN, "integration")},
+            "name": "UZMZ Integration",
+            "manufacturer": "USMS",
+            "model": "Integration Status",
+        }
+
+
+class UZMZPlatformVersionSensor(CoordinatorEntity, SensorEntity):
+    """The USMS website's platform version; a change usually means a site update."""
+
+    _attr_has_entity_name = True
+    _attr_name = "USMS Platform Version"
+    _attr_icon = "mdi:web"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_unique_id = f"{DOMAIN}_integration_platform_version"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the version shown on the USMS home page."""
+        return self.coordinator.platform_version
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return the version this release was tested against."""
+        return {"tested_version": KNOWN_PLATFORM_VERSION}
 
     @property
     def device_info(self) -> Dict[str, Any]:

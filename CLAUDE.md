@@ -14,7 +14,7 @@ custom_components/uzmz/
   api.py            - USMS website client (captcha login, session reads, parsing)
   coordinator.py    - Data update coordinator (session reuse, keep-alive, reauth, live usage)
   usage.py          - Anchors the login-time readings to the live usage reports
-  sensor.py         - Sensor entity definitions (8 sensors: 4 electric, 4 water)
+  sensor.py         - Sensor entity definitions (8 meter sensors: 4 electric, 4 water; plus last/next refresh and the USMS platform version)
   manifest.json     - Integration metadata
   strings.json      - UI strings
   translations/en.json - English translations
@@ -39,7 +39,7 @@ tests/               - pytest suite for api.py (no HA needed)
 
 - Sensors: remaining units (kWh/m3), balance (BND), status, last updated — for both electric and water
 - Timestamps use Asia/Brunei timezone
-- USMS platform version (`lblVer` span on `MainPage`, only visible when logged in): 6.1.1001 as of 2026-10-09, when the two-stage captcha login and shifted meter-card layout were observed
+- USMS platform version (`lblVer` span on `MainPage`, only visible when logged in): 6.1.1001 as of 2026-10-09, when the two-stage captcha login and shifted meter-card layout were observed. `api.py` reads it on every `MainPage` GET; it's exposed as `sensor.uzmz_integration_usms_platform_version`, and the coordinator creates a one-time `uzmz_platform_changed` notification when it differs from the last version seen (stored as `platform_version` in the entry; defaults to `const.KNOWN_PLATFORM_VERSION`). Update `KNOWN_PLATFORM_VERSION` after verifying a new version.
 - Scan interval configurable via options flow (300-86400 seconds, default 1 hour)
 - Unique ID per config entry is the IC number
 - Runtime dependency: `beautifulsoup4>=4.12.3`
@@ -73,7 +73,7 @@ When USMS changes and the integration breaks, test `api.py` against the live sit
    - `python scripts/live_test.py fetch` / `keepalive`: session reuse from a new process (simulates an HA restart) / keep-alive only.
    - `python scripts/live_test.py usage`: the live Usage History reports (daily + hourly) next to the Home snapshot; check these still parse if readings stop updating.
    - Every response is dumped to `.live_test/<command>_NN_<method>.html` with its redirect chain in the first line. Diagnose from these.
-4. **Version**: check `lblVer` on `MainPage` (6.1.1001 as of 2026-10-09). A change likely means the site changed.
+4. **Version**: check `lblVer` on `MainPage` (6.1.1001 as of 2026-10-09), or the user's `sensor.uzmz_integration_usms_platform_version`. A change likely means the site changed.
 5. **If the script fails but a browser works**: open the login page in Chrome, install a JS hook that records the form fields on submit (redact the password) into `localStorage`, have the **user** type credentials + captcha (Claude must not enter passwords or solve captchas), re-install the hook after each page load, then diff the browser's POST against the script's. This is how the missing `DXScript`/`DXCss` fields and the `MainPage` landing page were found. Avoid query strings in tool output (blocked).
 
 **Lockout safety** (USMS locks the account after 5 failed logins, and the counter isn't always shown):

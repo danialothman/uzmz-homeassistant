@@ -65,6 +65,13 @@ ELEM_CAPTCHA_BOX = "ASPxRoundPanel1_ASPxCaptcha1"
 ELEM_CAPTCHA_IMG = "ASPxRoundPanel1_ASPxCaptcha1_IMG"
 ELEM_CAPTCHA_ERROR = "ASPxRoundPanel1_ASPxCaptcha1_TB_EC"
 ELEM_IFRAME = "MyFrame"
+# USMS platform version label on MainPage (only shown when logged in).
+ELEM_PLATFORM_VERSION = "lblVer"
+
+# The USMS platform version this release was tested against. A different
+# version usually means USMS changed its website (6.1.1001 brought the
+# captcha login), so the coordinator warns once when it changes.
+KNOWN_PLATFORM_VERSION = "6.1.1001"
 
 # Units of measurement
 UNIT_KWH = "kWh"
@@ -82,3 +89,5 @@ CONF_USAGE_ANCHORS = "usage_anchors"
 CONF_USAGE_RATES = "usage_rates"
 # Set by the config flow after a login so the next update re-anchors.
 CONF_FRESH_SESSION = "fresh_session"
+# Last USMS platform version seen, to warn once when it changes.
+CONF_PLATFORM_VERSION = "platform_version"
