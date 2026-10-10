@@ -339,3 +339,35 @@ def test_usage_report_detects_expired_session(client):
         client.fetch_usage(
             "Report/UsageHistory?p=x", api.dt.date(2026, 10, 7), api.dt.date(2026, 10, 10), hourly=False
         )
+
+
+# ----- hardening -----
+
+
+def test_login_form_to_another_site_is_refused(client):
+    page = login_page(captcha_visible=False, action="https://evil.example/collect")
+    client.responses = [response(page, url=BASE_URL + "ResLogin")]
+    with pytest.raises(api.SiteError, match="different site"):
+        client.start_login()
+    assert client._login_action is None
+
+
+def test_login_form_downgrade_to_http_is_refused(client):
+    page = login_page(captcha_visible=False, action="http://usms.example/SmartMeter/ResLogin")
+    client.responses = [response(page, url=BASE_URL + "ResLogin")]
+    with pytest.raises(api.SiteError):
+        client.start_login()
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("image/png", "image/png"),
+        ("image/JPEG; charset=binary", "image/jpeg"),
+        ("image/png)](https://evil.example)", "image/png"),
+        ("text/html", "image/png"),
+        (None, "image/png"),
+    ],
+)
+def test_captcha_content_type_is_limited_to_images(header, expected):
+    assert api._captcha_content_type(header) == expected

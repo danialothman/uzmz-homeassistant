@@ -197,7 +197,11 @@ class USMSClient:
         # Browsers also post the resources DevExpress loaded (added by its JS).
         self._login_form.update(_devexpress_resource_fields(soup))
         # The second stage posts back to ResLogin?sc=<token>, so honour the action.
-        self._login_action = urllib.parse.urljoin(page_url, form.get("action") or page_url)
+        action = urllib.parse.urljoin(page_url, form.get("action") or page_url)
+        # Credentials are posted here, so never follow a form to another site.
+        if not _same_origin(action, self.base_url):
+            raise SiteError("Login form points to a different site; refusing to send credentials")
+        self._login_action = action
 
         captcha_box = soup.find(id=ELEM_CAPTCHA_BOX)
         if captcha_box and "display:none" in (captcha_box.get("style") or "").replace(" ", ""):
@@ -206,7 +210,7 @@ class USMSClient:
         img_response = self._get(urllib.parse.urljoin(page_url, img["src"]))
         return CaptchaChallenge(
             image=img_response.content,
-            content_type=img_response.headers.get("Content-Type", "image/png"),
+            content_type=_captcha_content_type(img_response.headers.get("Content-Type")),
         )
 
     # ----- authenticated reads (from the coordinator) -----
@@ -312,6 +316,25 @@ class USMSClient:
         except requests.RequestException as err:
             raise CannotConnect(str(err)) from err
         return response
+
+
+def _same_origin(url: str, base_url: str) -> bool:
+    """True if url has the same scheme, host and port as base_url."""
+    a, b = urllib.parse.urlsplit(url), urllib.parse.urlsplit(base_url)
+    return (a.scheme, a.netloc.lower()) == (b.scheme, b.netloc.lower())
+
+
+_CAPTCHA_TYPES = ("image/png", "image/jpeg", "image/gif")
+
+
+def _captcha_content_type(header: Optional[str]) -> str:
+    """The captcha's image type, limited to known image types.
+
+    It ends up inside markdown in the config flow (as a data: URI), so a
+    header from the site must not be able to inject anything there.
+    """
+    content_type = (header or "").split(";")[0].strip().lower()
+    return content_type if content_type in _CAPTCHA_TYPES else "image/png"
 
 
 def _devexpress_resource_fields(soup: BeautifulSoup) -> Dict[str, str]:
