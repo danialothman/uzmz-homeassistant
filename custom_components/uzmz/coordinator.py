@@ -18,7 +18,9 @@ from .const import (
     CONF_PLATFORM_VERSION,
     CONF_SESSION_COOKIES,
     CONF_USAGE_ANCHORS,
+    CONF_USAGE_CHANGED,
     CONF_USAGE_RATES,
+    CONF_USAGE_SEEN,
     DOMAIN,
     DEFAULT_SCAN_INTERVAL,
     KEEPALIVE_INTERVAL,
@@ -32,6 +34,8 @@ from .usage import (
     make_anchor,
     new_session_start,
     parse_number,
+    recent_usage,
+    usage_changed,
     window_start,
 )
 
@@ -133,7 +137,10 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         legacy = CONF_USAGE_ANCHORS not in entry_data
         anchors = dict(entry_data.get(CONF_USAGE_ANCHORS) or {})
         rates = dict(entry_data.get(CONF_USAGE_RATES) or {})
-        today = datetime.now(BRUNEI_TZ).date()
+        seen = dict(entry_data.get(CONF_USAGE_SEEN) or {})
+        changed = dict(entry_data.get(CONF_USAGE_CHANGED) or {})
+        now = datetime.now(BRUNEI_TZ)
+        today = now.date()
         # Keep the fresh-login flag until every meter has been anchored.
         unanchored = False
 
@@ -163,6 +170,14 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 unanchored = unanchored or new_session
                 continue
 
+            # When USMS last posted readings, to spot it falling behind.
+            recent = recent_usage(usage_now, today)
+            if usage_changed(seen.get(meter), recent):
+                changed[meter] = now.isoformat()
+            seen[meter] = recent
+            if meter in changed:
+                readings["usage_updated"] = changed[meter]
+
             if new_session:
                 if anchor and fresh:
                     rates[meter] = learn_rate(anchor, units, balance, rates.get(meter))
@@ -190,6 +205,8 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         return {
             CONF_USAGE_ANCHORS: anchors,
             CONF_USAGE_RATES: rates,
+            CONF_USAGE_SEEN: seen,
+            CONF_USAGE_CHANGED: changed,
             CONF_FRESH_SESSION: fresh and unanchored,
         }
 

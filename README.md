@@ -107,6 +107,7 @@ Entity IDs are generated from the device and sensor names. These are the default
 | `sensor.uzmz_electric_meter_electric_remaining_balance` | `sensor.uzmz_water_meter_water_remaining_balance` | Remaining balance (BND) |
 | `sensor.uzmz_electric_meter_electric_meter_status` | `sensor.uzmz_water_meter_water_meter_status` | Meter status, e.g. `ACTIVE` |
 | `sensor.uzmz_electric_meter_electric_last_updated` | `sensor.uzmz_water_meter_water_last_updated` | Date of the USMS reading |
+| `sensor.uzmz_electric_meter_electric_usage_updated` | `sensor.uzmz_water_meter_water_usage_updated` | When USMS last posted new usage (see [USMS falling behind](#usms-falling-behind)) |
 
 The integration also has `sensor.uzmz_integration_last_refresh` (last successful sync) and `sensor.uzmz_integration_next_refresh`.
 
@@ -229,6 +230,36 @@ automation:
         data:
           title: "UZMZ — {{ trigger.id }} balance low"
           message: "{{ trigger.id }} balance is {{ trigger.to_state.state }} BND. Time to top up."
+```
+
+### USMS falling behind
+
+USMS sometimes stops posting meter readings for a while; the integration can't fix that, but it can tell you. The **Usage Updated** sensors record when UZMZ last saw new usage in USMS's reports, checked at every sync (hourly by default) and kept across restarts. Electricity normally updates every hour; water a day or more late. They stay unknown until the first change after installing.
+
+This alerts when electricity hasn't updated for 6 hours or water for 3 days (adjust to taste):
+
+```yaml
+automation:
+  - alias: "UZMZ readings stale"
+    triggers:
+      - trigger: template
+        value_template: >
+          {% set t = states('sensor.uzmz_electric_meter_electric_usage_updated') | as_datetime(none) %}
+          {{ t is not none and now() - t > timedelta(hours=6) }}
+        id: electric
+      - trigger: template
+        value_template: >
+          {% set t = states('sensor.uzmz_water_meter_water_usage_updated') | as_datetime(none) %}
+          {{ t is not none and now() - t > timedelta(days=3) }}
+        id: water
+    actions:
+      - action: notify.mobile_app_your_phone
+        data:
+          title: "UZMZ — USMS readings are late"
+          message: >
+            USMS hasn't posted new {{ trigger.id }} usage in
+            {{ states('sensor.uzmz_' ~ trigger.id ~ '_meter_' ~ trigger.id ~ '_usage_updated') | as_datetime | relative_time }}.
+            Balances are estimates until it catches up.
 ```
 
 ### Daily report
