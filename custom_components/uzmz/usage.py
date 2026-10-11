@@ -215,6 +215,36 @@ def current_readings(
     return result
 
 
+# Readings worked out from the reports, which the login snapshot can't give.
+ESTIMATE_KEYS = (
+    "remaining_unit",
+    "remaining_balance",
+    "used_since_sign_in",
+    "sign_in_units",
+    "sign_in_balance",
+    "sign_in_date",
+    "rate",
+    "rate_is_average",
+    "balance_method",
+    "month_to_date",
+    "approximate",
+    "usage_updated",
+)
+
+
+def last_estimate(previous: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """The previous poll's report-based readings, to reuse when a report fails.
+
+    The login snapshot is older, so falling back to it would make the
+    remaining units jump back up (and usage counters count the drop twice).
+    A previous poll that reused one passes it on, so it lasts until the
+    reports come back.
+    """
+    if not previous or "used_since_sign_in" not in previous:
+        return {}
+    return {key: previous[key] for key in ESTIMATE_KEYS if key in previous}
+
+
 def recent_usage(usage_now: dict[str, float], today: dt.date) -> dict[str, float]:
     """The last few days of a usage report, kept to spot when USMS posts data."""
     cutoff = (today - dt.timedelta(days=LOOKBACK_DAYS)).isoformat()

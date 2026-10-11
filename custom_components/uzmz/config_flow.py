@@ -12,6 +12,7 @@ otherwise reauth asks for it again along with the captcha.
 
 import base64
 import logging
+from datetime import timedelta
 from typing import Any, Dict, Optional
 
 import voluptuous as vol
@@ -307,6 +308,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 data = dict(self.config_entry.data)
                 data.pop(CONF_PASSWORD)
                 self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+            # Applied here rather than by an update listener: HA wants an entry
+            # with one to reload through it, but sign-in reloads by itself.
+            coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+            if coordinator:
+                coordinator.async_set_scan_interval(
+                    timedelta(seconds=user_input[CONF_SCAN_INTERVAL])
+                )
             return self.async_create_entry(title="", data=user_input)
 
         # Get current values
