@@ -23,6 +23,7 @@ from .const import (
     ICON_CURRENCY,
     ICON_STATUS,
     ICON_UPDATE,
+    ICON_USAGE_UPDATED,
     KNOWN_PLATFORM_VERSION,
     UNIT_KWH,
     UNIT_CUBIC_METER,
@@ -85,6 +86,16 @@ async def async_setup_entry(
             SensorDeviceClass.TIMESTAMP,
             None,
         ),
+        UZMZSensor(
+            coordinator,
+            "electric",
+            "usage_updated",
+            "Electric Usage Updated",
+            None,
+            ICON_USAGE_UPDATED,
+            SensorDeviceClass.TIMESTAMP,
+            None,
+        ),
     ])
     
     # Water meter sensors
@@ -126,6 +137,16 @@ async def async_setup_entry(
             "Water Last Updated",
             None,
             ICON_UPDATE,
+            SensorDeviceClass.TIMESTAMP,
+            None,
+        ),
+        UZMZSensor(
+            coordinator,
+            "water",
+            "usage_updated",
+            "Water Usage Updated",
+            None,
+            ICON_USAGE_UPDATED,
             SensorDeviceClass.TIMESTAMP,
             None,
         ),
@@ -195,6 +216,10 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
                     _LOGGER.warning("Could not convert value to float: %s", value)
                     return 0.0
             return 0.0
+
+        # When UZMZ last saw USMS post new usage (ISO timestamp)
+        if self._sensor_type == "usage_updated":
+            return datetime.fromisoformat(value) if value else None
 
         # Parse timestamp strings into datetime objects
         if self._sensor_type == "last_updated" and value:

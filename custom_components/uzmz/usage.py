@@ -213,3 +213,28 @@ def current_readings(
         }
     )
     return result
+
+
+def recent_usage(usage_now: dict[str, float], today: dt.date) -> dict[str, float]:
+    """The last few days of a usage report, kept to spot when USMS posts data."""
+    cutoff = (today - dt.timedelta(days=LOOKBACK_DAYS)).isoformat()
+    return {day: value for day, value in usage_now.items() if day >= cutoff}
+
+
+def usage_changed(previous: Optional[dict[str, float]], current: dict[str, float]) -> bool:
+    """Whether the reports show new data since the previous poll.
+
+    A day's total changing, or a new day with usage, means USMS posted
+    readings. Days that drop out of the window don't count. With no previous
+    poll there is nothing to compare, so it's False.
+    """
+    if previous is None:
+        return False
+    for day, value in current.items():
+        old = previous.get(day)
+        if old is None:
+            if value > 0:
+                return True
+        elif value != old:
+            return True
+    return False

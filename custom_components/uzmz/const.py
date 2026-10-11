@@ -84,6 +84,7 @@ ICON_WATER = "mdi:water"
 ICON_CURRENCY = "mdi:cash"
 ICON_STATUS = "mdi:information-outline"
 ICON_UPDATE = "mdi:update"
+ICON_USAGE_UPDATED = "mdi:clock-check-outline"
 # Usage-report bookkeeping stored in the config entry (see usage.py).
 CONF_USAGE_ANCHORS = "usage_anchors"
 CONF_USAGE_RATES = "usage_rates"
@@ -91,3 +92,6 @@ CONF_USAGE_RATES = "usage_rates"
 CONF_FRESH_SESSION = "fresh_session"
 # Last USMS platform version seen, to warn once when it changes.
 CONF_PLATFORM_VERSION = "platform_version"
+# Recent report totals per meter, and when they last changed (USMS posted data).
+CONF_USAGE_SEEN = "usage_seen"
+CONF_USAGE_CHANGED = "usage_changed"

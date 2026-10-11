@@ -6,6 +6,9 @@
 # Install: Settings -> Dashboards -> Add dashboard. Open it, then
 # Edit -> three dots -> Raw configuration editor, and paste this file.
 #
+# The "USMS readings are late" banner shows when electricity has had no new
+# usage for 6 hours or water for 3 days (needs UZMZ 1.6.0 or later).
+#
 # Gauge colours: electric goes red below 15 BND and yellow below 50; water
 # goes red below 5 and yellow below 15. These match the USMS SMS alerts;
 # adjust them to suit you.
@@ -44,6 +47,19 @@ views:
       - condition: state
         entity: binary_sensor.uzmz_sign_in_required
         state_not: 'on'
+    - type: markdown
+      show_empty: false
+      content: |-
+        {%- set e = states('sensor.uzmz_electric_meter_electric_usage_updated') | as_datetime(none) -%}
+        {%- set w = states('sensor.uzmz_water_meter_water_usage_updated') | as_datetime(none) -%}
+        {%- set e_late = e is not none and now() - e > timedelta(hours=6) -%}
+        {%- set w_late = w is not none and now() - w > timedelta(days=3) -%}
+        {%- if e_late or w_late -%}
+        ## ⏳ USMS readings are late
+        {% if e_late %}Electricity: nothing new for {{ e | relative_time }}.
+        {% endif %}{% if w_late %}Water: nothing new for {{ w | relative_time }}.
+        {% endif %}Balances are estimates until USMS catches up.
+        {%- endif -%}
     - type: entities
       entities:
       - entity: sensor.uzmz_integration_last_refresh
@@ -107,6 +123,9 @@ views:
       - entity: sensor.uzmz_electric_meter_electric_last_updated
         name: USMS reading date
         format: date
+      - entity: sensor.uzmz_electric_meter_electric_usage_updated
+        name: USMS last posted usage
+        format: relative
   - type: grid
     cards:
     - type: heading
@@ -153,6 +172,9 @@ views:
       - entity: sensor.uzmz_water_meter_water_last_updated
         name: USMS reading date
         format: date
+      - entity: sensor.uzmz_water_meter_water_usage_updated
+        name: USMS last posted usage
+        format: relative
   - type: grid
     cards:
     - type: heading

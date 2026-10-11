@@ -213,3 +213,34 @@ def test_water_balance_crossing_the_first_band():
     # 4.54 m3 at 0.11 + 5.46 m3 at 0.44 = 2.9018
     assert current["remaining_balance"] == 0.14
     assert current["rate"] == 0.44
+
+
+def test_recent_usage_keeps_the_lookback_window():
+    now = {**PAST_DAYS, "2026-10-06": 99.0, "2026-10-10": 39.952}
+    assert usage.recent_usage(now, TODAY) == {**PAST_DAYS, "2026-10-10": 39.952}
+
+
+def test_usage_changed_when_a_day_grows():
+    before = {**PAST_DAYS, "2026-10-10": 39.952}
+    assert usage.usage_changed(before, {**PAST_DAYS, "2026-10-10": 43.1})
+
+
+def test_usage_unchanged_when_usms_posts_nothing():
+    before = {**PAST_DAYS, "2026-10-10": 39.952}
+    assert not usage.usage_changed(before, dict(before))
+
+
+def test_usage_changed_when_a_new_day_has_usage():
+    before = {"2026-10-09": 1.9}
+    assert usage.usage_changed(before, {"2026-10-09": 1.9, "2026-10-10": 0.4})
+    # A new day with nothing in it yet (just after midnight) isn't new data.
+    assert not usage.usage_changed(before, {"2026-10-09": 1.9, "2026-10-10": 0.0})
+
+
+def test_usage_changed_ignores_days_leaving_the_window():
+    before = {"2026-10-06": 99.0, **PAST_DAYS}
+    assert not usage.usage_changed(before, dict(PAST_DAYS))
+
+
+def test_usage_changed_needs_a_previous_poll():
+    assert not usage.usage_changed(None, PAST_DAYS)
