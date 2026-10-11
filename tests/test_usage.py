@@ -244,3 +244,33 @@ def test_usage_changed_ignores_days_leaving_the_window():
 
 def test_usage_changed_needs_a_previous_poll():
     assert not usage.usage_changed(None, PAST_DAYS)
+
+
+def test_last_estimate_keeps_the_report_based_readings():
+    # 11 Oct 00:55: a report failed and the login snapshot (2399.519) replaced
+    # the last estimate (2378.41), so the units jumped back up.
+    previous = {
+        "status": "ACTIVE",
+        "remaining_unit": 2378.41,
+        "remaining_balance": 217.8,
+        "used_since_sign_in": 21.109,
+        "sign_in_units": 2399.519,
+        "usage_updated": "2026-10-10T23:55:37+08:00",
+        "live": True,
+    }
+    kept = usage.last_estimate(previous)
+    assert kept["remaining_unit"] == 2378.41
+    assert kept["remaining_balance"] == 217.8
+    assert kept["usage_updated"] == "2026-10-10T23:55:37+08:00"
+    assert "status" not in kept and "live" not in kept
+
+
+def test_last_estimate_carries_over_repeated_failures():
+    reused = {"remaining_unit": 2378.41, "used_since_sign_in": 21.109, "live": False}
+    assert usage.last_estimate(reused)["remaining_unit"] == 2378.41
+
+
+def test_last_estimate_needs_a_report_based_previous_poll():
+    assert usage.last_estimate(None) == {}
+    # Only the login snapshot (e.g. the first poll after a restart).
+    assert usage.last_estimate({"remaining_unit": 2399.519, "live": False}) == {}

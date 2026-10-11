@@ -80,10 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    
-    # Register update listener
-    entry.async_on_unload(entry.add_update_listener(async_update_options))
-    
+
     return True
 
 
@@ -94,24 +91,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     return unload_ok
 
-
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Update options for the config entry."""
-    # Get the coordinator
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    
-    # Update scan interval if changed
-    scan_interval = entry.options.get(
-        CONF_SCAN_INTERVAL,
-        DEFAULT_SCAN_INTERVAL.total_seconds()
-    )
-    new_interval = timedelta(seconds=scan_interval)
-    
-    if coordinator._normal_update_interval != new_interval:
-        coordinator._normal_update_interval = new_interval
-        # If the coordinator is currently in fast-retry mode after a failure,
-        # leave update_interval alone — it will be restored on next success.
-        # Otherwise apply the new normal interval immediately.
-        if coordinator.update_interval != new_interval and coordinator._consecutive_failures == 0:
-            coordinator.update_interval = new_interval
-        _LOGGER.info("Updated scan interval to %s", new_interval)

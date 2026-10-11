@@ -30,6 +30,7 @@ from .usage import (
     ELECTRIC_TARIFF,
     WATER_TARIFF,
     current_readings,
+    last_estimate,
     learn_rate,
     make_anchor,
     new_session_start,
@@ -166,6 +167,8 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 raise
             except USMSError as err:
                 _LOGGER.warning("Could not read USMS %s usage report: %s", meter, err)
+                if not new_session:
+                    readings.update(last_estimate((self.data or {}).get(meter)))
                 readings["live"] = False
                 unanchored = unanchored or new_session
                 continue
@@ -253,6 +256,18 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             title="UZMZ — Sign-in required",
             notification_id=REAUTH_NOTIFICATION_ID,
         )
+
+    @callback
+    def async_set_scan_interval(self, interval: timedelta) -> None:
+        """Apply a polling interval changed in the options flow."""
+        if interval == self._normal_update_interval:
+            return
+        self._normal_update_interval = interval
+        # In fast-retry mode after a failure, leave update_interval alone;
+        # the next success restores the normal interval.
+        if self._consecutive_failures == 0:
+            self.update_interval = interval
+        _LOGGER.info("Updated scan interval to %s", interval)
 
     @property
     def platform_version(self) -> Optional[str]:
