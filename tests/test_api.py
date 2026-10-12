@@ -355,6 +355,31 @@ def test_usage_report_error_is_raised(client):
         )
 
 
+def test_no_hourly_data_yet_counts_as_nothing_today(client):
+    # Just after midnight USMS has no hourly rows for the new day yet.
+    client.responses = [
+        response(report_page()),
+        response(report_page([("11/10/2026", "126.116")])),
+        response(report_page()),
+        response(report_page(error="Consumption history not found.")),
+    ]
+    usage = client.fetch_usage(
+        "Report/UsageHistory?p=x", api.dt.date(2026, 10, 11), api.dt.date(2026, 10, 12), hourly=True
+    )
+    assert usage == {"2026-10-11": 126.116, "2026-10-12": 0.0}
+
+
+def test_no_daily_data_is_still_an_error(client):
+    client.responses = [
+        response(report_page()),
+        response(report_page(error="Consumption history not found.")),
+    ]
+    with pytest.raises(api.NoUsageData):
+        client.fetch_usage(
+            "Report/UsageHistory?p=x", api.dt.date(2026, 10, 7), api.dt.date(2026, 10, 10), hourly=False
+        )
+
+
 def test_usage_report_detects_expired_session(client):
     client.responses = [response("<html></html>", url=BASE_URL + "SessionExpire")]
     with pytest.raises(api.SessionExpired):

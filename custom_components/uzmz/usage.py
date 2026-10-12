@@ -251,6 +251,22 @@ def recent_usage(usage_now: dict[str, float], today: dt.date) -> dict[str, float
     return {day: value for day, value in usage_now.items() if day >= cutoff}
 
 
+def last_posted(usage_now: dict[str, float], now: dt.datetime) -> Optional[str]:
+    """When USMS last posted usage, judged from the reports alone.
+
+    Used before a change has been seen, so a meter USMS has stopped posting
+    for isn't shown as unknown. A past day's total was posted after that day
+    ended at the earliest; usage today means it is posting now.
+    """
+    days = [day for day, value in usage_now.items() if value > 0]
+    if not days:
+        return None
+    latest = dt.date.fromisoformat(max(days))
+    if latest >= now.date():
+        return now.isoformat()
+    return dt.datetime.combine(latest + dt.timedelta(days=1), dt.time(), now.tzinfo).isoformat()
+
+
 def usage_changed(previous: Optional[dict[str, float]], current: dict[str, float]) -> bool:
     """Whether the reports show new data since the previous poll.
 
