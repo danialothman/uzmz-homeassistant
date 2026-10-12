@@ -274,3 +274,24 @@ def test_last_estimate_needs_a_report_based_previous_poll():
     assert usage.last_estimate(None) == {}
     # Only the login snapshot (e.g. the first poll after a restart).
     assert usage.last_estimate({"remaining_unit": 2399.519, "live": False}) == {}
+
+
+BRUNEI = dt.timezone(dt.timedelta(hours=8))
+
+
+def test_last_posted_is_after_the_latest_day_with_usage():
+    # Water on 12 Oct: 9 Oct posted, 10 Oct still 0, 11 Oct missing.
+    now = dt.datetime(2026, 10, 12, 20, 30, tzinfo=BRUNEI)
+    posted = usage.last_posted({"2026-10-09": 0.876, "2026-10-10": 0.0}, now)
+    assert posted == "2026-10-10T00:00:00+08:00"
+
+
+def test_last_posted_is_now_with_usage_today():
+    now = dt.datetime(2026, 10, 12, 20, 30, tzinfo=BRUNEI)
+    assert usage.last_posted({"2026-10-11": 126.1, "2026-10-12": 95.8}, now) == now.isoformat()
+
+
+def test_last_posted_unknown_without_usage():
+    now = dt.datetime(2026, 10, 12, 20, 30, tzinfo=BRUNEI)
+    assert usage.last_posted({"2026-10-12": 0.0}, now) is None
+    assert usage.last_posted({}, now) is None

@@ -61,6 +61,10 @@ class SiteError(USMSError):
     """USMS returned something unexpected (maintenance, layout change)."""
 
 
+class NoUsageData(SiteError):
+    """A usage report has no data for the dates asked (e.g. just after midnight)."""
+
+
 class InvalidCaptcha(USMSError):
     """The submitted captcha code was rejected."""
 
@@ -243,7 +247,11 @@ class USMSClient:
                     day = dt.datetime.strptime(label, "%d/%m/%Y").date()
                     usage[day.isoformat()] = value
             if hourly:
-                rows = self._usage_report(usage_path, REPORT_HOURLY, today, today)
+                try:
+                    rows = self._usage_report(usage_path, REPORT_HOURLY, today, today)
+                except NoUsageData:
+                    # Nothing posted for today yet (every night after midnight).
+                    rows = []
                 usage[today.isoformat()] = round(sum(value for _, value in rows), 3)
         return usage
 
@@ -433,7 +441,10 @@ def _parse_usage_rows(html: str) -> list[tuple[str, float]]:
     soup = BeautifulSoup(html, "html.parser")
     error = soup.find("span", {"id": ELEM_LOGIN_ERROR})
     if error and error.get_text(strip=True):
-        raise SiteError(f"USMS usage report: {error.get_text(' ', strip=True)}")
+        message = f"USMS usage report: {error.get_text(' ', strip=True)}"
+        if "history not found" in message.lower():
+            raise NoUsageData(message)
+        raise SiteError(message)
     rows = []
     for tr in soup.select("tr.dxgvDataRow"):
         cells = [td.get_text(strip=True) for td in tr.find_all("td")]

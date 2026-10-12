@@ -31,6 +31,7 @@ from .usage import (
     WATER_TARIFF,
     current_readings,
     last_estimate,
+    last_posted,
     learn_rate,
     make_anchor,
     new_session_start,
@@ -177,6 +178,8 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             recent = recent_usage(usage_now, today)
             if usage_changed(seen.get(meter), recent):
                 changed[meter] = now.isoformat()
+            elif meter not in changed and (posted := last_posted(usage_now, now)):
+                changed[meter] = posted
             seen[meter] = recent
             if meter in changed:
                 readings["usage_updated"] = changed[meter]
