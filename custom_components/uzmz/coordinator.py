@@ -16,10 +16,12 @@ from .api import InvalidCredentials, SessionExpired, USMSClient, USMSError
 from .const import (
     AUTO_SIGN_IN_DELAY,
     CONF_AUTO_SIGN_IN_BLOCKED,
+    CONF_AUTO_SIGN_IN_TRIED,
     CONF_BASE_URL,
     CONF_IC_NUMBER,
     CONF_PASSWORD,
     CONF_SAVE_PASSWORD,
+    CONF_SESSION_ENDED,
     CONF_FRESH_SESSION,
     CONF_PLATFORM_VERSION,
     CONF_SESSION_COOKIES,
@@ -66,8 +68,9 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
     It reads pages with the stored session and keeps that session alive.
     When USMS ends the session it raises ConfigEntryAuthFailed, which starts
     the reauth flow where the user signs in (with a captcha if USMS asks).
-    With a saved password it first tries once to sign in by itself, after
-    AUTO_SIGN_IN_DELAY, and only falls back to reauth if that fails.
+    With a saved password it first tries once to sign in by itself,
+    AUTO_SIGN_IN_DELAY after the session ended, and only falls back to reauth
+    if that fails.
     """
 
     def __init__(
@@ -83,10 +86,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         self._normal_update_interval = update_interval
         self._notification_active = False
         self._session_expired = False
-        # Automatic sign-in: one attempt per session (a success reloads the
-        # entry, which starts a new coordinator).
-        self._auto_sign_in_tried = False
-        self._auto_sign_in_waiting = False
+        self._auto_sign_in_timer: Optional[CALLBACK_TYPE] = None
         self._auto_sign_in_error: Optional[str] = None
         self.last_successful_refresh: Optional[datetime] = None
         self.last_attempt_time: Optional[datetime] = None
@@ -103,14 +103,14 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         """Fetch data from UZMZ website."""
         self.last_attempt_time = datetime.now(BRUNEI_TZ)
         try:
-            data = await self.hass.async_add_executor_job(self.client.fetch_meter_data)
-            usage_state = await self._async_apply_live_usage(data)
+            try:
+                data, usage_state = await self._async_fetch()
+            except SessionExpired:
+                if not await self._async_auto_sign_in():
+                    raise
+                data, usage_state = await self._async_fetch()
         except SessionExpired as err:
             self._session_expired = True
-            if self._auto_sign_in_waiting or self._async_schedule_auto_sign_in():
-                raise UpdateFailed(
-                    "USMS session ended; UZMZ will sign in again automatically"
-                ) from err
             self._async_notify_reauth()
             raise ConfigEntryAuthFailed(
                 "USMS session expired; re-authenticate and solve the captcha"
@@ -118,6 +118,8 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         except USMSError as err:
             await self._async_handle_failure(str(err))
             raise UpdateFailed(str(err)) from err
+        except UpdateFailed:
+            raise  # waiting to sign in again
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected error fetching UZMZ data")
             await self._async_handle_failure(f"Unexpected error: {err}")
@@ -142,8 +144,17 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             )
             self.update_interval = self._normal_update_interval
         self._async_check_platform_version(usage_state)
+        entry_data = self.config_entry.data
+        if entry_data.get(CONF_SESSION_ENDED) or entry_data.get(CONF_AUTO_SIGN_IN_TRIED):
+            # The session works, so a stale end time mustn't skip the next wait.
+            self._async_update_entry_data({CONF_SESSION_ENDED: None, CONF_AUTO_SIGN_IN_TRIED: None})
         self._async_persist(usage_state)
         return data
+
+    async def _async_fetch(self) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        """Read the meters and bring them up to date from the usage reports."""
+        data = await self.hass.async_add_executor_job(self.client.fetch_meter_data)
+        return data, await self._async_apply_live_usage(data)
 
     async def _async_apply_live_usage(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Replace the login-time readings in data with current ones.
@@ -262,41 +273,58 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             )
             self._notification_active = True
 
-    @callback
-    def _async_schedule_auto_sign_in(self) -> bool:
-        """Start the wait before an automatic sign-in, if one is allowed."""
+    async def _async_auto_sign_in(self) -> bool:
+        """Sign in again with the saved password, once per ended session.
+
+        Returns True once signed in (self.client then holds the new session),
+        or False if it isn't allowed or failed, so the user is asked instead.
+        Raises UpdateFailed while waiting for AUTO_SIGN_IN_DELAY to pass.
+        """
         entry = self.config_entry
         if (
-            self._auto_sign_in_tried
-            or not entry.options.get(CONF_SAVE_PASSWORD, False)
+            not entry.options.get(CONF_SAVE_PASSWORD, False)
             or not entry.data.get(CONF_PASSWORD)
             or entry.data.get(CONF_AUTO_SIGN_IN_BLOCKED)
+            or entry.data.get(CONF_AUTO_SIGN_IN_TRIED)
         ):
             return False
-        self._auto_sign_in_waiting = True
-        at = (datetime.now(BRUNEI_TZ) + AUTO_SIGN_IN_DELAY).strftime("%H:%M")
-        _LOGGER.info("USMS session ended; signing in again automatically at %s", at)
-        entry.async_on_unload(
-            async_call_later(self.hass, AUTO_SIGN_IN_DELAY, self._async_auto_sign_in)
-        )
-        async_create(
-            self.hass,
-            (
-                f"The USMS session ended, so readings are paused. UZMZ will sign in "
-                f"again by itself at {at}. It waits in case you are using the USMS "
-                "website or app: USMS allows one session per account, so signing in "
-                "would end yours."
-            ),
-            title="UZMZ — Signing in again soon",
-            notification_id=AUTO_SIGN_IN_NOTIFICATION_ID,
-        )
-        return True
 
-    async def _async_auto_sign_in(self, _now: datetime) -> None:
-        """Sign in once with the saved password; if that fails, ask the user."""
-        self._auto_sign_in_tried = True
-        self._auto_sign_in_waiting = False
-        entry = self.config_entry
+        now = datetime.now(BRUNEI_TZ)
+        ended = entry.data.get(CONF_SESSION_ENDED)
+        if not ended:
+            ended = now.isoformat()
+            self._async_update_entry_data({CONF_SESSION_ENDED: ended})
+        due = datetime.fromisoformat(ended) + AUTO_SIGN_IN_DELAY
+        if now < due:
+            # Stop the keep-alive until then; it would only find the same.
+            self._session_expired = True
+            if self._auto_sign_in_timer is None:
+                _LOGGER.info(
+                    "USMS session ended; signing in again automatically at %s",
+                    due.strftime("%H:%M"),
+                )
+                self._auto_sign_in_timer = async_call_later(
+                    self.hass, due - now, self._async_sign_in_when_due
+                )
+                entry.async_on_unload(self._async_cancel_auto_sign_in)
+                async_create(
+                    self.hass,
+                    (
+                        f"The USMS session ended, so readings are paused. UZMZ will sign in "
+                        f"again by itself at {due.strftime('%H:%M')}. It waits in case you are "
+                        "using the USMS website or app: USMS allows one session per account, "
+                        "so signing in would end yours."
+                    ),
+                    title="UZMZ — Signing in again soon",
+                    notification_id=AUTO_SIGN_IN_NOTIFICATION_ID,
+                )
+            raise UpdateFailed(
+                f"USMS session ended; signing in again automatically at {due.strftime('%H:%M')}"
+            )
+
+        # The one attempt for this session, even across restarts.
+        self._async_update_entry_data({CONF_AUTO_SIGN_IN_TRIED: True})
+        async_dismiss(self.hass, AUTO_SIGN_IN_NOTIFICATION_ID)
         client = USMSClient(entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL))
         try:
             signed_in = await self.hass.async_add_executor_job(
@@ -306,38 +334,55 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         except InvalidCredentials as err:
             # Never retry a rejected password: 5 failures lock the account.
             error = f"USMS rejected the saved password ({err})"
-            self.hass.config_entries.async_update_entry(
-                entry, data={**entry.data, CONF_AUTO_SIGN_IN_BLOCKED: True}
-            )
+            self._async_update_entry_data({CONF_AUTO_SIGN_IN_BLOCKED: True})
         except USMSError as err:
             error = str(err)
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected error signing in to USMS")
             error = f"Unexpected error: {err}"
 
-        cookies = client.get_cookies()
-        client.close()
-        if error is None:
-            _LOGGER.info("Signed in to USMS again automatically")
-            async_create(
-                self.hass,
-                f"USMS ended the session, so UZMZ signed in again by itself at "
-                f"{datetime.now(BRUNEI_TZ).strftime('%H:%M')}. Readings are back.",
-                title="UZMZ — Signed in again",
-                notification_id=AUTO_SIGN_IN_NOTIFICATION_ID,
-            )
-            self.hass.config_entries.async_update_entry(
-                entry,
-                data={**entry.data, CONF_SESSION_COOKIES: cookies, CONF_FRESH_SESSION: True},
-            )
-            self.hass.config_entries.async_schedule_reload(entry.entry_id)
-            return
+        if error is not None:
+            client.close()
+            _LOGGER.warning("Automatic USMS sign-in failed: %s", error)
+            self._auto_sign_in_error = error
+            return False
 
-        _LOGGER.warning("Automatic USMS sign-in failed: %s", error)
-        self._auto_sign_in_error = error
-        async_dismiss(self.hass, AUTO_SIGN_IN_NOTIFICATION_ID)
-        # The refresh hits SessionExpired again and starts the reauth flow.
+        _LOGGER.info("Signed in to USMS again automatically")
+        old, self.client = self.client, client
+        old.close()
+        entry.async_on_unload(client.close)
+        # A new session: re-anchor the usage tracking, as after a manual sign-in.
+        data = {
+            key: value
+            for key, value in entry.data.items()
+            if key not in (CONF_SESSION_ENDED, CONF_AUTO_SIGN_IN_TRIED)
+        }
+        data.update({CONF_SESSION_COOKIES: client.get_cookies(), CONF_FRESH_SESSION: True})
+        self.hass.config_entries.async_update_entry(entry, data=data)
+        self._session_expired = False
+        async_create(
+            self.hass,
+            f"USMS ended the session, so UZMZ signed in again by itself at "
+            f"{datetime.now(BRUNEI_TZ).strftime('%H:%M')}. Readings are back.",
+            title="UZMZ — Signed in again",
+            notification_id=AUTO_SIGN_IN_NOTIFICATION_ID,
+        )
+        return True
+
+    async def _async_sign_in_when_due(self, _now: datetime) -> None:
+        self._auto_sign_in_timer = None
         await self.async_refresh()
+
+    @callback
+    def _async_cancel_auto_sign_in(self) -> None:
+        if self._auto_sign_in_timer is not None:
+            self._auto_sign_in_timer()
+            self._auto_sign_in_timer = None
+
+    @callback
+    def _async_update_entry_data(self, updates: Dict[str, Any]) -> None:
+        entry = self.config_entry
+        self.hass.config_entries.async_update_entry(entry, data={**entry.data, **updates})
 
     @callback
     def _async_notify_reauth(self) -> None:

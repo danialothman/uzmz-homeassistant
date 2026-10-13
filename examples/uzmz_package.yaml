@@ -4,6 +4,8 @@
 # lovelace-dashboard.yaml uses them.
 #   - UZMZ Electric/Water Summary: balance and units on one line.
 #   - UZMZ Sign-in Required: on while USMS needs a new sign-in.
+#   - UZMZ Signing In Again: on while UZMZ waits to sign in again by itself
+#     (automatic sign-in, needs Remember password).
 #   - UZMZ Electric/Water Consumption: kWh / m3 used (for the Energy dashboard).
 #   - UZMZ Electric/Water Cost: BND spent (for the Energy dashboard).
 #   - UZMZ Electric/Water Days Left: credit left at the last 7 days' use.
@@ -51,6 +53,21 @@ template:
         unique_id: uzmz_sign_in_required
         device_class: problem
         state: "{{ trigger.update_type == 'added' }}"
+
+  # On while UZMZ waits to sign in again by itself (UZMZ 1.7.1 or later). The
+  # same notification is replaced by "Signed in again" afterwards.
+  - triggers:
+      - trigger: persistent_notification
+        notification_id: uzmz_auto_sign_in
+    binary_sensor:
+      - name: "UZMZ Signing In Again"
+        unique_id: uzmz_signing_in_again
+        icon: mdi:account-sync
+        state: >
+          {{ trigger.update_type != 'removed'
+             and 'soon' in (trigger.notification.title or '') }}
+        attributes:
+          message: "{{ trigger.notification.message if trigger.update_type != 'removed' else '' }}"
 
   # Consumption counters for the Utility dashboard and the Energy dashboard.
   # USMS only reports remaining units, so add up each drop and ignore

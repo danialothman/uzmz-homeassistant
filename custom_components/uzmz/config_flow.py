@@ -31,6 +31,8 @@ from .api import (
 )
 from .const import (
     CONF_AUTO_SIGN_IN_BLOCKED,
+    CONF_AUTO_SIGN_IN_TRIED,
+    CONF_SESSION_ENDED,
     DOMAIN,
     CONF_IC_NUMBER,
     CONF_PASSWORD,
@@ -208,7 +210,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data = {**entry.data, CONF_SESSION_COOKIES: cookies, CONF_FRESH_SESSION: True}
             data.pop(CONF_PASSWORD, None)
             # A manual sign-in may follow a fixed password: allow automatic ones again.
-            data.pop(CONF_AUTO_SIGN_IN_BLOCKED, None)
+            for key in (CONF_AUTO_SIGN_IN_BLOCKED, CONF_SESSION_ENDED, CONF_AUTO_SIGN_IN_TRIED):
+                data.pop(key, None)
             if entry.options.get(CONF_SAVE_PASSWORD, False):
                 data[CONF_PASSWORD] = self._data[CONF_PASSWORD]
             return self.async_update_reload_and_abort(entry, data=data)

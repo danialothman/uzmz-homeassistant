@@ -6,6 +6,9 @@
 # Install: Settings -> Dashboards -> Add dashboard. Open it, then
 # Edit -> three dots -> Raw configuration editor, and paste this file.
 #
+# The "Signing in again soon" banner shows while UZMZ waits to sign in again
+# by itself (automatic sign-in, UZMZ 1.7.1 or later with Remember password).
+#
 # The "USMS readings are late" banner shows when electricity has had no new
 # usage for 6 hours or water for 3 days (needs UZMZ 1.6.0 or later).
 #
@@ -47,6 +50,17 @@ views:
       - condition: state
         entity: binary_sensor.uzmz_sign_in_required
         state_not: 'on'
+      - condition: state
+        entity: binary_sensor.uzmz_signing_in_again
+        state_not: 'on'
+    - type: markdown
+      content: '## 🔁 Signing in again soon
+
+        {{ state_attr(''binary_sensor.uzmz_signing_in_again'', ''message'') }}'
+      visibility:
+      - condition: state
+        entity: binary_sensor.uzmz_signing_in_again
+        state: 'on'
     - type: markdown
       show_empty: false
       content: |-
