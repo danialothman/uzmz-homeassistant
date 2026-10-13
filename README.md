@@ -80,7 +80,7 @@ Since October 2026 USMS often doesn't ask for a captcha. With **Remember passwor
 
 If USMS asks for a captcha, or the attempt fails for any other reason, you get the usual **Sign-in required** notification and sign in yourself. If USMS rejects the saved password, automatic sign-in stays off until you sign in yourself, so it can never use up the 5 attempts before USMS locks the account.
 
-Readings pause while it waits, and the usage reports fill in the gap afterwards.
+Readings pause while it waits, and the usage reports fill in the gap afterwards. The example dashboard shows a **Signing in again soon** banner meanwhile. If Home Assistant restarts during the wait, it carries on from the same end time and still only tries once.
 
 ### Options
 
@@ -175,6 +175,7 @@ The balance sensors show how each reading was calculated in their attributes: `e
 | `sensor.uzmz_electric_days_left` / `sensor.uzmz_water_days_left` | Days of credit left at the last 7 days' average use |
 | `sensor.uzmz_electric_summary` / `sensor.uzmz_water_summary` | Balance and units on one line, e.g. `220.12 BND · 2422 kWh` |
 | `binary_sensor.uzmz_sign_in_required` | On while USMS needs you to sign in again |
+| `binary_sensor.uzmz_signing_in_again` | On while UZMZ waits to sign in again by itself ([automatic sign-in](#automatic-sign-in)); its `message` attribute says when |
 
 To install:
 1. Add `homeassistant: packages: !include_dir_named packages` to `configuration.yaml`.

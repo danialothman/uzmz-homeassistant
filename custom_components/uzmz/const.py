@@ -18,6 +18,11 @@ CONF_SAVE_PASSWORD = "save_password"
 # Set when USMS rejected the saved password during an automatic sign-in, so
 # it isn't tried again (5 failures lock the account). A manual sign-in clears it.
 CONF_AUTO_SIGN_IN_BLOCKED = "auto_sign_in_blocked"
+# When the current session was found ended, and whether the one automatic
+# sign-in for it was used. Kept in the entry so a restart (or setup retries)
+# during the wait neither restarts it nor tries twice. A new session clears them.
+CONF_SESSION_ENDED = "session_ended"
+CONF_AUTO_SIGN_IN_TRIED = "auto_sign_in_tried"
 
 # Default values
 DEFAULT_BASE_URL = "https://www.usms.com.bn/SmartMeter/"
