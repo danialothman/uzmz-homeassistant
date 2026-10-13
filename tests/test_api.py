@@ -226,6 +226,50 @@ def test_captcha_is_single_use(client):
         client.submit_login("00000000", "secret")
 
 
+# ----- unattended sign-in -----
+
+
+def test_sign_in_without_captcha(client):
+    client.responses = [
+        response(login_page(captcha_visible=False), url=BASE_URL + "ResLogin"),
+        response(LOGGED_IN_PAGE, url=BASE_URL + "MainPage"),
+        response(LOGGED_IN_PAGE, url=BASE_URL + "MainPage"),
+        response(METER_PAGE, url=BASE_URL + "Default.aspx"),
+    ]
+    assert client.sign_in("00000000", "secret") is True
+    assert [r[0] for r in client.requests].count("post") == 1
+
+
+def test_sign_in_stops_at_a_captcha(client):
+    client.responses = [
+        response(login_page(captcha_visible=False), url=BASE_URL + "ResLogin"),
+        response(login_page(captcha_visible=True, action="./ResLogin?sc=t"), url=BASE_URL + "ResLogin?sc=t"),
+        response(content=b"PNG", headers={"Content-Type": "image/png"}),
+    ]
+    assert client.sign_in("00000000", "secret") is False
+    # Only stage 1 was posted; the captcha is never submitted.
+    assert [r[0] for r in client.requests].count("post") == 1
+
+
+def test_sign_in_with_a_visible_captcha_posts_nothing(client):
+    client.responses = [
+        response(login_page(captcha_visible=True), url=BASE_URL + "ResLogin"),
+        response(content=b"PNG", headers={"Content-Type": "image/png"}),
+    ]
+    assert client.sign_in("00000000", "secret") is False
+    assert all(r[0] == "get" for r in client.requests)
+
+
+def test_sign_in_wrong_password(client):
+    error = '<span id="pcErr_lblErrMsg">Invalid password. 4 attempts left.</span>'
+    client.responses = [
+        response(login_page(captcha_visible=False)),
+        response(login_page(captcha_visible=False, extra=error)),
+    ]
+    with pytest.raises(api.InvalidCredentials, match="4 attempts left"):
+        client.sign_in("00000000", "wrong")
+
+
 # ----- session reads -----
 
 

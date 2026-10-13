@@ -7,13 +7,19 @@ from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.components.persistent_notification import async_create, async_dismiss
 
-from .api import SessionExpired, USMSClient, USMSError
+from .api import InvalidCredentials, SessionExpired, USMSClient, USMSError
 from .const import (
+    AUTO_SIGN_IN_DELAY,
+    CONF_AUTO_SIGN_IN_BLOCKED,
+    CONF_BASE_URL,
+    CONF_IC_NUMBER,
+    CONF_PASSWORD,
+    CONF_SAVE_PASSWORD,
     CONF_FRESH_SESSION,
     CONF_PLATFORM_VERSION,
     CONF_SESSION_COOKIES,
@@ -22,6 +28,7 @@ from .const import (
     CONF_USAGE_RATES,
     CONF_USAGE_SEEN,
     DOMAIN,
+    DEFAULT_BASE_URL,
     DEFAULT_SCAN_INTERVAL,
     KEEPALIVE_INTERVAL,
     KNOWN_PLATFORM_VERSION,
@@ -47,6 +54,7 @@ NOTIFICATION_ID = "uzmz_update_failure"
 # Fixed so automations can trigger on it (e.g. to push to a phone).
 REAUTH_NOTIFICATION_ID = "uzmz_reauth_required"
 PLATFORM_NOTIFICATION_ID = "uzmz_platform_changed"
+AUTO_SIGN_IN_NOTIFICATION_ID = "uzmz_auto_sign_in"
 MAX_FAILURES_BEFORE_NOTIFY = 3
 FAILURE_RETRY_INTERVAL = timedelta(minutes=5)
 BRUNEI_TZ = ZoneInfo("Asia/Brunei")
@@ -55,10 +63,11 @@ BRUNEI_TZ = ZoneInfo("Asia/Brunei")
 class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
     """Fetch UZMZ data over a session that was logged in via the config flow.
 
-    USMS requires a captcha to log in, so the coordinator never logs in itself.
-    It only reads pages with the stored session and keeps that session alive;
-    when USMS ends the session it raises ConfigEntryAuthFailed, which starts
-    the reauth flow where the user solves a new captcha.
+    It reads pages with the stored session and keeps that session alive.
+    When USMS ends the session it raises ConfigEntryAuthFailed, which starts
+    the reauth flow where the user signs in (with a captcha if USMS asks).
+    With a saved password it first tries once to sign in by itself, after
+    AUTO_SIGN_IN_DELAY, and only falls back to reauth if that fails.
     """
 
     def __init__(
@@ -74,6 +83,11 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         self._normal_update_interval = update_interval
         self._notification_active = False
         self._session_expired = False
+        # Automatic sign-in: one attempt per session (a success reloads the
+        # entry, which starts a new coordinator).
+        self._auto_sign_in_tried = False
+        self._auto_sign_in_waiting = False
+        self._auto_sign_in_error: Optional[str] = None
         self.last_successful_refresh: Optional[datetime] = None
         self.last_attempt_time: Optional[datetime] = None
 
@@ -93,6 +107,10 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             usage_state = await self._async_apply_live_usage(data)
         except SessionExpired as err:
             self._session_expired = True
+            if self._auto_sign_in_waiting or self._async_schedule_auto_sign_in():
+                raise UpdateFailed(
+                    "USMS session ended; UZMZ will sign in again automatically"
+                ) from err
             self._async_notify_reauth()
             raise ConfigEntryAuthFailed(
                 "USMS session expired; re-authenticate and solve the captcha"
@@ -245,16 +263,99 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             self._notification_active = True
 
     @callback
+    def _async_schedule_auto_sign_in(self) -> bool:
+        """Start the wait before an automatic sign-in, if one is allowed."""
+        entry = self.config_entry
+        if (
+            self._auto_sign_in_tried
+            or not entry.options.get(CONF_SAVE_PASSWORD, False)
+            or not entry.data.get(CONF_PASSWORD)
+            or entry.data.get(CONF_AUTO_SIGN_IN_BLOCKED)
+        ):
+            return False
+        self._auto_sign_in_waiting = True
+        at = (datetime.now(BRUNEI_TZ) + AUTO_SIGN_IN_DELAY).strftime("%H:%M")
+        _LOGGER.info("USMS session ended; signing in again automatically at %s", at)
+        entry.async_on_unload(
+            async_call_later(self.hass, AUTO_SIGN_IN_DELAY, self._async_auto_sign_in)
+        )
+        async_create(
+            self.hass,
+            (
+                f"The USMS session ended, so readings are paused. UZMZ will sign in "
+                f"again by itself at {at}. It waits in case you are using the USMS "
+                "website or app: USMS allows one session per account, so signing in "
+                "would end yours."
+            ),
+            title="UZMZ — Signing in again soon",
+            notification_id=AUTO_SIGN_IN_NOTIFICATION_ID,
+        )
+        return True
+
+    async def _async_auto_sign_in(self, _now: datetime) -> None:
+        """Sign in once with the saved password; if that fails, ask the user."""
+        self._auto_sign_in_tried = True
+        self._auto_sign_in_waiting = False
+        entry = self.config_entry
+        client = USMSClient(entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL))
+        try:
+            signed_in = await self.hass.async_add_executor_job(
+                client.sign_in, entry.data[CONF_IC_NUMBER], entry.data[CONF_PASSWORD]
+            )
+            error = None if signed_in else "USMS asked for a captcha"
+        except InvalidCredentials as err:
+            # Never retry a rejected password: 5 failures lock the account.
+            error = f"USMS rejected the saved password ({err})"
+            self.hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_AUTO_SIGN_IN_BLOCKED: True}
+            )
+        except USMSError as err:
+            error = str(err)
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected error signing in to USMS")
+            error = f"Unexpected error: {err}"
+
+        cookies = client.get_cookies()
+        client.close()
+        if error is None:
+            _LOGGER.info("Signed in to USMS again automatically")
+            async_create(
+                self.hass,
+                f"USMS ended the session, so UZMZ signed in again by itself at "
+                f"{datetime.now(BRUNEI_TZ).strftime('%H:%M')}. Readings are back.",
+                title="UZMZ — Signed in again",
+                notification_id=AUTO_SIGN_IN_NOTIFICATION_ID,
+            )
+            self.hass.config_entries.async_update_entry(
+                entry,
+                data={**entry.data, CONF_SESSION_COOKIES: cookies, CONF_FRESH_SESSION: True},
+            )
+            self.hass.config_entries.async_schedule_reload(entry.entry_id)
+            return
+
+        _LOGGER.warning("Automatic USMS sign-in failed: %s", error)
+        self._auto_sign_in_error = error
+        async_dismiss(self.hass, AUTO_SIGN_IN_NOTIFICATION_ID)
+        # The refresh hits SessionExpired again and starts the reauth flow.
+        await self.async_refresh()
+
+    @callback
     def _async_notify_reauth(self) -> None:
         """Tell the user to log in again; HA's reauth prompt alone is easy to miss."""
+        tried = (
+            f"UZMZ tried to sign in again by itself, but couldn't: {self._auto_sign_in_error}.\n\n"
+            if self._auto_sign_in_error
+            else ""
+        )
         async_create(
             self.hass,
             (
                 "The USMS session has ended, so meter readings have stopped updating. "
                 "This happens whenever you sign in on the USMS website or app, "
                 "because USMS allows one session per account.\n\n"
+                f"{tried}"
                 "Open [Settings → Devices & services](/config/integrations/integration/uzmz), "
-                "choose **Reconfigure** on UZMZ and solve the captcha to sign in again."
+                "choose **Reconfigure** on UZMZ and sign in again (solving the captcha if USMS shows one)."
             ),
             title="UZMZ — Sign-in required",
             notification_id=REAUTH_NOTIFICATION_ID,
