@@ -15,6 +15,9 @@ CONF_SCAN_INTERVAL = "scan_interval"
 CONF_SESSION_COOKIES = "session_cookies"
 # Option: keep the password for sign-in renewals (off: ask for it every time).
 CONF_SAVE_PASSWORD = "save_password"
+# Set when USMS rejected the saved password during an automatic sign-in, so
+# it isn't tried again (5 failures lock the account). A manual sign-in clears it.
+CONF_AUTO_SIGN_IN_BLOCKED = "auto_sign_in_blocked"
 
 # Default values
 DEFAULT_BASE_URL = "https://www.usms.com.bn/SmartMeter/"
@@ -22,6 +25,11 @@ DEFAULT_SCAN_INTERVAL = timedelta(hours=1)
 # How often to touch the USMS session so it doesn't idle out between polls.
 # ASP.NET's default session timeout is 20 minutes.
 KEEPALIVE_INTERVAL = timedelta(minutes=5)
+# With a saved password, how long to wait after USMS ends the session before
+# signing in again automatically. USMS allows one session per account, so
+# signing in straight away would cut off someone using the website or app
+# (usually what ended the session, e.g. to top up).
+AUTO_SIGN_IN_DELAY = timedelta(minutes=60)
 WATER_SCAN_INTERVAL = timedelta(hours=24)
 
 # Sensor types

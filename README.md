@@ -10,7 +10,8 @@ A Home Assistant custom integration for monitoring prepaid electric and water me
 
 - 🔌 **Electric meter**: remaining units (kWh), balance (BND), meter status and USMS reading date
 - 💧 **Water meter**: remaining units (m³), balance (BND), meter status and USMS reading date
-- 🔐 **Captcha-aware login**: you solve the USMS captcha once in the Home Assistant UI, then the integration keeps the session alive
+- 🔐 **Captcha-aware login**: you sign in once in the Home Assistant UI (solving the USMS captcha if it shows one), then the integration keeps the session alive
+- 🔁 **Automatic sign-in** (optional): with **Remember password** on, UZMZ signs in again by itself an hour after USMS ends the session, as long as USMS doesn't ask for a captcha
 - 🔔 **Sign-in alerts**: a notification when USMS ends the session and you need to sign in again
 - 📊 **History**: all sensors are recorded by Home Assistant for graphs and statistics
 - 🔄 **Configurable polling**: default every hour
@@ -36,9 +37,9 @@ A Home Assistant custom integration for monitoring prepaid electric and water me
    - **IC Number** and **Password**: the ones you use on the USMS website
    - **Remember password**: off by default; see [Privacy & security](#privacy--security)
    - **Base URL**: optional, defaults to `https://www.usms.com.bn/SmartMeter/`
-3. Type the captcha shown in the next step.
+3. Type the captcha shown in the next step, if USMS shows one.
 
-USMS asks for a captcha at every login, so the integration signs in once and then keeps that session alive. It never logs in on its own. USMS locks an account after 5 failed logins, so it only ever submits a login when you do.
+The integration signs in once and then keeps that session alive. USMS locks an account after 5 failed logins, so UZMZ only submits a login when you do, or once per ended session if you turn on [automatic sign-in](#automatic-sign-in).
 
 ### When USMS asks you to sign in again
 
@@ -50,7 +51,7 @@ USMS allows **one session per account**, so the session ends when:
 - the USMS site restarts;
 - Home Assistant is offline for a while.
 
-If you use the USMS website or app regularly, expect to sign in again in Home Assistant afterwards. Turning on **Remember password** makes that a captcha-only step.
+If you use the USMS website or app regularly, expect to sign in again in Home Assistant afterwards. Turning on **Remember password** means you don't type the password again, and turns on [automatic sign-in](#automatic-sign-in).
 
 It also creates a **UZMZ — Sign-in required** notification (ID `uzmz_reauth_required`), which clears itself once you have signed in again. To get it on your phone, add an automation (replace `notify.mobile_app_your_phone` with your notify service):
 
@@ -70,12 +71,23 @@ automation:
             url: /config/integrations/integration/uzmz
 ```
 
+### Automatic sign-in
+
+Since October 2026 USMS often doesn't ask for a captcha. With **Remember password** on, when USMS ends the session UZMZ:
+
+1. waits **an hour**, showing a **UZMZ — Signing in again soon** notification. USMS allows one session per account, so signing in straight away would log you out if you're using the USMS website or app (for example, to top up);
+2. then signs in **once** with the saved password and replaces the notification with **UZMZ — Signed in again**.
+
+If USMS asks for a captcha, or the attempt fails for any other reason, you get the usual **Sign-in required** notification and sign in yourself. If USMS rejects the saved password, automatic sign-in stays off until you sign in yourself, so it can never use up the 5 attempts before USMS locks the account.
+
+Readings pause while it waits, and the usage reports fill in the gap afterwards.
+
 ### Options
 
 Go to **Settings** → **Devices & Services** → **UZMZ** → **Configure** to change:
 
 - **Update interval**: how often to fetch meter data (300–86400 seconds, default 3600)
-- **Remember password**: turning it off deletes the saved password immediately; turning it on saves your password the next time you sign in
+- **Remember password**: turning it off deletes the saved password immediately and turns off automatic sign-in; turning it on saves your password the next time you sign in
 
 ## Privacy & security
 
@@ -87,7 +99,7 @@ What is stored, in Home Assistant's own configuration storage (`config/.storage/
 |---|---|---|
 | IC number | Yes | Needed to log in. It is never shown: not in the integration name, notifications, forms or logs. |
 | USMS session cookie | Yes | Lets readings continue after a Home Assistant restart without solving a new captcha. While it is valid, it gives the same access as being logged in on the USMS website. |
-| Password | **Only if you turn on Remember password** (off by default) | Lets you sign in again with just the captcha |
+| Password | **Only if you turn on Remember password** (off by default) | Lets UZMZ sign in again by itself, or you with just the captcha |
 
 Things to know:
 

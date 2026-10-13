@@ -133,6 +133,20 @@ class USMSClient:
             response = self._get(self.login_url)
             return self._load_login_form(BeautifulSoup(response.text, "html.parser"), response.url)
 
+    def sign_in(self, ic_number: str, password: str) -> bool:
+        """Log in unattended, if USMS doesn't ask for a captcha.
+
+        Returns False as soon as a captcha is shown (nothing more is
+        submitted). Raises InvalidCredentials if the password is rejected.
+        """
+        challenge = self.start_login()
+        if challenge is None:
+            challenge = self.submit_login(ic_number, password)
+        if challenge is not None:
+            return False
+        self.fetch_meter_data()
+        return True
+
     def submit_login(
         self, ic_number: str, password: str, captcha: str = ""
     ) -> Optional[CaptchaChallenge]:

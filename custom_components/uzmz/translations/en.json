@@ -13,7 +13,7 @@
         "data_description": {
           "ic_number": "Your IC number used to login to USMS",
           "password": "Your USMS account password",
-          "save_password": "Off (recommended): the password is only used to sign in now, and you type it again whenever USMS asks you to sign in again. On: it is saved in Home Assistant's configuration (unencrypted, like other integrations' passwords) so signing in again only needs the captcha.",
+          "save_password": "Off (recommended): the password is only used to sign in now, and you type it again whenever USMS asks you to sign in again. On: it is saved in Home Assistant's configuration (unencrypted, like other integrations' passwords), and when USMS ends the session UZMZ signs in again by itself an hour later if USMS doesn't ask for a captcha. If it does, signing in again only needs the captcha.",
           "base_url": "The USMS SmartMeter website address. Leave the default unless USMS moves the site."
         }
       },
@@ -68,7 +68,7 @@
         },
         "data_description": {
           "scan_interval": "How often to fetch meter data from USMS (minimum 300 seconds, maximum 86400 seconds)",
-          "save_password": "Turning this off deletes the saved password now. Turning it on saves your password the next time you sign in."
+          "save_password": "On: when USMS ends the session, UZMZ waits an hour (in case you're using the USMS website or app) and signs in again by itself, unless USMS asks for a captcha. Turning this off deletes the saved password now. Turning it on saves your password the next time you sign in."
         }
       }
     }
