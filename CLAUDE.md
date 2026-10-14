@@ -42,6 +42,7 @@ tests/               - pytest suite for api.py (no HA needed)
 - USMS platform version (`lblVer` span on `MainPage`, only visible when logged in): 6.1.1001 as of 2026-10-09, when the two-stage captcha login and shifted meter-card layout were observed. `api.py` reads it on every `MainPage` GET; it's exposed as `sensor.uzmz_integration_usms_platform_version`, and the coordinator creates a one-time `uzmz_platform_changed` notification when it differs from the last version seen (stored as `platform_version` in the entry; defaults to `const.KNOWN_PLATFORM_VERSION`). Update `KNOWN_PLATFORM_VERSION` after verifying a new version.
 - Scan interval configurable via options flow (300-86400 seconds, default 1 hour)
 - Unique ID per config entry is the IC number
+- Scope (v1.7.2): one USMS account per HA and one electric + one water meter per account, the only setup that's been tested. Sensor unique IDs and device identifiers aren't per entry (e.g. `uzmz_electric_remaining_unit`), so the config flow aborts a second account (`single_account`) instead of letting its sensors silently clash. Extra meters of a type are ignored (the first card is kept); `USMSClient.meter_counts` counts them and the coordinator shows a once-per-start `uzmz_unsupported_meters` notification. Multi-account support would need per-entry unique IDs with an entity-registry migration that keeps the existing entity IDs. Multi-meter needs a real (redacted) page from such an account first.
 - Runtime dependency: `beautifulsoup4>=4.12.3`
 - No explicit HA version constraint, but tested with HA 2026.2
 

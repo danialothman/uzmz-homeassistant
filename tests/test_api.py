@@ -134,6 +134,27 @@ def test_meter_cards_are_parsed_by_caption():
     }
 
 
+def test_extra_meters_are_counted_and_the_first_is_kept():
+    second = _card(
+        "Images/Bulb.png",
+        {"Meter Status": "ACTIVE", "Remaining Unit": "10.0 kWh", "Remaining Balance": "$1.00"},
+    )
+    odd = _card("Images/Gas.png", {"Meter Status": "ACTIVE", "Remaining Unit": "5"})
+    page = METER_PAGE.replace("</tr></table></body>", second + odd + "</tr></table></body>")
+    cards = api._parse_meter_cards(page)
+    assert api._count_meters(cards) == {"electric": 2, "water": 1, "other": 1}
+    assert api._format_meter_data(cards)["electric"]["remaining_unit"] == "2477.399 kWh"
+
+
+def test_meter_counts_are_kept_on_the_client(client):
+    client.responses = [
+        response(LOGGED_IN_PAGE, url=BASE_URL + "MainPage"),
+        response(METER_PAGE, url=BASE_URL + "Default.aspx"),
+    ]
+    client.fetch_meter_data()
+    assert client.meter_counts == {"electric": 1, "water": 1}
+
+
 def test_missing_meter_stays_empty():
     assert api._format_meter_data(api._parse_meter_cards("<html></html>")) == {
         "electric": {},

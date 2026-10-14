@@ -57,6 +57,8 @@ NOTIFICATION_ID = "uzmz_update_failure"
 REAUTH_NOTIFICATION_ID = "uzmz_reauth_required"
 PLATFORM_NOTIFICATION_ID = "uzmz_platform_changed"
 AUTO_SIGN_IN_NOTIFICATION_ID = "uzmz_auto_sign_in"
+UNSUPPORTED_METERS_NOTIFICATION_ID = "uzmz_unsupported_meters"
+ISSUES_URL = "https://github.com/danialothman/uzmz-homeassistant/issues"
 MAX_FAILURES_BEFORE_NOTIFY = 3
 FAILURE_RETRY_INTERVAL = timedelta(minutes=5)
 BRUNEI_TZ = ZoneInfo("Asia/Brunei")
@@ -88,6 +90,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         self._session_expired = False
         self._auto_sign_in_timer: Optional[CALLBACK_TYPE] = None
         self._auto_sign_in_error: Optional[str] = None
+        self._meters_checked = False
         self.last_successful_refresh: Optional[datetime] = None
         self.last_attempt_time: Optional[datetime] = None
 
@@ -144,6 +147,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             )
             self.update_interval = self._normal_update_interval
         self._async_check_platform_version(usage_state)
+        self._async_check_meter_counts()
         entry_data = self.config_entry.data
         if entry_data.get(CONF_SESSION_ENDED) or entry_data.get(CONF_AUTO_SIGN_IN_TRIED):
             # The session works, so a stale end time mustn't skip the next wait.
@@ -424,6 +428,38 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         return self.client.platform_version
 
     @callback
+    def _async_check_meter_counts(self) -> None:
+        """Say once per start if the account has meters UZMZ can't show."""
+        if self._meters_checked:
+            return
+        self._meters_checked = True
+        counts = self.client.meter_counts
+        extra = [
+            f"{counts[kind]} {kind} meters" if kind != "other" else f"{counts[kind]} meter(s) of another type"
+            for kind in ("electric", "water", "other")
+            if counts.get(kind, 0) > (0 if kind == "other" else 1)
+        ]
+        if not extra:
+            return
+        _LOGGER.warning(
+            "USMS account has %s; UZMZ only supports one electric and one water meter",
+            ", ".join(extra),
+        )
+        async_create(
+            self.hass,
+            (
+                f"Your USMS account has {', '.join(extra)}. UZMZ currently supports one "
+                "electric and one water meter per account, so it only shows the first "
+                "of each type and ignores the rest.\n\n"
+                f"If you'd like the others supported, please [open an issue]({ISSUES_URL}) "
+                "and, if you can, attach a screenshot of the USMS home page with your "
+                "name, IC number and account details blurred."
+            ),
+            title="UZMZ — Some meters aren't shown",
+            notification_id=UNSUPPORTED_METERS_NOTIFICATION_ID,
+        )
+
+    @callback
     def _async_check_platform_version(self, state: Dict[str, Any]) -> None:
         """Warn once when the USMS platform version changes; add it to state."""
         current = self.client.platform_version
@@ -440,7 +476,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                 f"USMS updated its website from version {previous} to {current}.\n\n"
                 "UZMZ is still reading your meters. If readings stop or look wrong, "
                 "check for a UZMZ update in HACS, or report it on "
-                "[GitHub](https://github.com/danialothman/uzmz-homeassistant/issues)."
+                f"[GitHub]({ISSUES_URL})."
             ),
             title="UZMZ — USMS website updated",
             notification_id=PLATFORM_NOTIFICATION_ID,
