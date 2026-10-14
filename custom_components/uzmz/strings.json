@@ -54,7 +54,8 @@
     "abort": {
       "already_configured": "This IC number is already configured.",
       "reauth_successful": "Signed in to USMS again.",
-      "reconfigure_successful": "Signed in to USMS again."
+      "reconfigure_successful": "Signed in to USMS again.",
+      "single_account": "UZMZ supports one USMS account per Home Assistant for now. If you need more, please open an issue: {issues_url}"
     }
   },
   "options": {

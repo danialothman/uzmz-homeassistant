@@ -295,6 +295,15 @@ automation:
             ({{ states('sensor.uzmz_water_meter_water_remaining_balance') }} BND)
 ```
 
+## Limitations
+
+UZMZ is tested with one USMS account that has one electric and one water meter, so that's what it supports:
+
+- **One USMS account per Home Assistant.** Adding a second account stops with a message rather than half-working. Managing two homes on separate accounts (for example, your parents' house) isn't supported yet.
+- **One electric and one water meter per account.** If an account has more, UZMZ shows the first of each type, ignores the rest, and says so in a **UZMZ — Some meters aren't shown** notification.
+
+If you need either, please [open an issue](https://github.com/danialothman/uzmz-homeassistant/issues). For extra meters, a screenshot of the USMS home page with your name, IC number and account details blurred helps a lot: UZMZ has never seen that layout.
+
 ## Troubleshooting
 
 - **Invalid credentials**: check that you can log in on the USMS website with the same IC number and password. Stop after a couple of failures, because USMS locks the account after 5.

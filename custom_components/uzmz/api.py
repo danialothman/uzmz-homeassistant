@@ -109,6 +109,9 @@ class USMSClient:
         self._login_action: Optional[str] = None
         # USMS platform version from the last MainPage read (None if not shown).
         self.platform_version: Optional[str] = None
+        # Meter cards per type on the last home page read ("electric", "water",
+        # or "other" for a type UZMZ doesn't know); only one of each is shown.
+        self.meter_counts: Dict[str, int] = {}
         # The coordinator's keep-alive and data fetch can overlap in the
         # executor; requests.Session is not safe for concurrent use.
         self._lock = threading.Lock()
@@ -315,7 +318,9 @@ class USMSClient:
             iframe_url = urllib.parse.urljoin(self.base_url, iframe["src"])
             iframe_response = self._get(iframe_url)
 
-        return _format_meter_data(_parse_meter_cards(iframe_response.text))
+        cards = _parse_meter_cards(iframe_response.text)
+        self.meter_counts = _count_meters(cards)
+        return _format_meter_data(cards)
 
     # ----- helpers -----
 
@@ -429,8 +434,23 @@ def _parse_meter_cards(html: str) -> list[Dict[str, str]]:
     return filtered_data
 
 
+def _count_meters(meter_data: list[Dict[str, str]]) -> Dict[str, int]:
+    """Meter cards per type ("other" for types UZMZ doesn't know)."""
+    counts: Dict[str, int] = {}
+    for meter in meter_data:
+        meter_type = meter.get("Meter Type", "").lower()
+        if meter_type not in ("electric", "water"):
+            meter_type = "other"
+        counts[meter_type] = counts.get(meter_type, 0) + 1
+    return counts
+
+
 def _format_meter_data(meter_data: list[Dict[str, str]]) -> Dict[str, Any]:
-    """Format meter data for sensor entities."""
+    """Format meter data for sensor entities.
+
+    Only one meter of each type is supported: the first card of a type is
+    used and any others are ignored (see USMSClient.meter_counts).
+    """
     formatted: Dict[str, Any] = {
         "electric": {},
         "water": {},
@@ -438,7 +458,7 @@ def _format_meter_data(meter_data: list[Dict[str, str]]) -> Dict[str, Any]:
 
     for meter in meter_data:
         meter_type = meter.get("Meter Type", "").lower()
-        if meter_type in formatted:
+        if meter_type in formatted and not formatted[meter_type]:
             formatted[meter_type] = {
                 "status": meter.get("Meter Status", "Unknown"),
                 "remaining_unit": meter.get("Remaining Unit", "0"),
