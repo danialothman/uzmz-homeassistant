@@ -72,7 +72,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Sensor IDs aren't per account yet, so a second account's sensors
         # would clash with the first's and silently not be created.
         if self._async_current_entries():
-            return self.async_abort(reason="single_account")
+            return self.async_abort(
+                reason="single_account",
+                description_placeholders={
+                    "issues_url": "https://github.com/danialothman/uzmz-homeassistant/issues"
+                },
+            )
         errors: Dict[str, str] = {}
         site_message = ""
 
