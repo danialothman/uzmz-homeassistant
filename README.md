@@ -45,9 +45,10 @@ The integration signs in once and then keeps that session alive. USMS locks an a
 
 If the USMS session ends, the integration shows **Re-configuration required** under **Settings** → **Devices & Services**. Click **Reconfigure**, enter your password (or leave it blank if you chose **Remember password**), then type the captcha.
 
-USMS allows **one session per account**, so the session ends when:
+The USMS session ends when:
 
-- you log in to USMS anywhere else, such as the website or app;
+- you log in to USMS anywhere else, such as the website or app (USMS allows **one session per account**);
+- USMS ends it by itself, which in October 2026 happened about once a day at random times, even overnight;
 - the USMS site restarts;
 - Home Assistant is offline for a while.
 
