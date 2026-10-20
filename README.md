@@ -418,4 +418,5 @@ Issues and pull requests are welcome at [github.com/danialothman/uzmz-homeassist
 
 ## Credits
 
-Based on the original UZMZ Python script for utility meter monitoring.
+- Based on the original UZMZ Python script for utility meter monitoring.
+- Thanks to [USMS Calculator](https://usmscalculator.brunei.app/) by brunei.app for explaining how prepaid top-up pricing works: the tariff bands apply to what you top up each month, with earlier top-ups using the cheaper blocks first. That explanation is the basis of UZMZ's [top-up prices](#top-up-prices) (v1.8.0 onwards), which were then checked against real USMS top-ups and balances. UZMZ doesn't use their code or call their service.
