@@ -7,7 +7,7 @@ DOMAIN = "uzmz"
 # in log messages and in notifications.
 ENTRY_TITLE = "UZMZ"
 # Keep in step with manifest.json (a test checks).
-VERSION = "1.8.1"
+VERSION = "1.9.0"
 # Sent with every request, so USMS can see what the traffic is and who to
 # contact, rather than a generic HTTP library's default.
 USER_AGENT = f"UZMZ/{VERSION} (Home Assistant integration; +https://github.com/danialothman/uzmz-homeassistant)"
@@ -116,6 +116,8 @@ CONF_USAGE_CHANGED = "usage_changed"
 # Units bought per meter this calendar month, which sets the price of the next
 # top-up (see usage.month_top_ups).
 CONF_TOP_UPS = "top_ups"
+# USMS top-up transaction numbers per meter that the price layers already include.
+CONF_TOP_UP_SEEN = "top_up_seen"
 UNIT_CURRENCY_PER_KWH = "BND/kWh"
 UNIT_CURRENCY_PER_CUBIC_METER = "BND/m³"
 ICON_TOP_UP = "mdi:cash-plus"

@@ -220,7 +220,7 @@ def test_electric_top_up_is_priced_by_the_month_so_far():
 
     assert amount == 249.61
     assert layers == [[105.658, 0.1], [600.0, 0.01], [1400, 0.08], [1316.13, 0.1]]
-    assert top_ups == {"month": "2026-10", "units": 3316.13}
+    assert top_ups == {"month": "2026-10", "units": 3316.13, "amount": None}
     assert usage.top_up_plan(top_ups, usage.ELECTRIC_TARIFF) == {
         "topped_up_this_month": 249.61,
         "bought_this_month": 3316.13,
@@ -288,10 +288,10 @@ def test_earlier_top_ups_are_worked_out_from_the_price():
 
 
 def test_month_top_ups_restart_on_the_first():
-    assert usage.month_top_ups(None, TODAY) == {"month": "2026-10", "units": None}
+    assert usage.month_top_ups(None, TODAY) == {"month": "2026-10", "units": None, "amount": None}
     assert usage.month_top_ups({"month": "2026-10", "units": 50.0}, TODAY) == {"month": "2026-10", "units": 50.0}
     assert usage.month_top_ups({"month": "2026-10", "units": 50.0}, dt.date(2026, 11, 1)) == {
-        "month": "2026-11", "units": 0.0,
+        "month": "2026-11", "units": 0.0, "amount": 0.0,
     }
 
 
@@ -468,3 +468,69 @@ def test_prices_a_fraction_off_a_band_count_as_that_band():
     change = usage.next_price_change([[27.667, 0.10988], [54.54, 0.11], [54.547, 0.44]], 1.5, dt.date(2026, 10, 10))
     assert change["units_at_price_now"] == 82.207
     assert change["next_price"] == 0.44
+
+
+# ----- USMS's top-up history -----
+
+
+def _top_up(time, amount, units, id_):
+    return {"time": time, "id": id_, "amount": amount, "debt": 0.0, "recharge": amount, "units": units, "unit": "kWh"}
+
+
+# Real: B$250 on the 1st of each month bought 3320 kWh.
+HISTORY = [
+    _top_up("2026-09-01T13:21:13", 250.0, 3320.0, "T1"),
+    _top_up("2026-10-01T08:30:01", 250.0, 3320.0, "T2"),
+]
+
+
+def test_history_gives_the_month_exactly():
+    assert usage.history_month(HISTORY, dt.date(2026, 10, 20)) == {"month": "2026-10", "units": 3320.0, "amount": 250.0}
+    plan = usage.top_up_plan(usage.history_month(HISTORY, dt.date(2026, 10, 20)), usage.ELECTRIC_TARIFF)
+    assert plan["topped_up_this_month"] == 250.0
+    assert plan["top_up_price"] == 0.1
+    assert plan["top_up_left_at_price"] == 68.0  # 680 kWh to 4,000
+
+
+def test_history_prices_each_top_up_by_the_month_before_it():
+    later = HISTORY + [_top_up("2026-10-25T09:00:00", 100.0, 680.0 + 166.667, "T3")]
+
+    priced = usage.history_layers(later, {"T3"}, usage.ELECTRIC_TARIFF)
+
+    # 3320 kWh already bought in October: 680 kWh at 0.10, then 0.12.
+    assert priced["layers"] == [[680.0, 0.1], [166.667, 0.12]]
+    assert priced == {"layers": priced["layers"], "units": 846.667, "amount": 100.0}
+
+
+def test_history_top_up_is_added_exactly_at_sign_in():
+    # Real 1 Oct: 101.788 kWh / B$10.17 just before; 3421.788 / 260.17 after.
+    previous = {"units": 105.658, "balance": 10.56, "layers": [[105.658, 0.1]]}
+    new = usage.history_layers(HISTORY, {"T2"}, usage.ELECTRIC_TARIFF)
+
+    layers, _, amount = usage.settle_layers(
+        previous, 3421.788, 260.17, 0.0, usage.ELECTRIC_TARIFF, OCTOBER, new
+    )
+
+    assert amount == 250.0
+    assert layers == [[101.788, 0.1], [600.0, 0.01], [1400.0, 0.08], [1320.0, 0.1]]
+
+
+def test_history_with_nothing_new_is_plain_usage():
+    previous = {"units": 1578.857, "balance": 152.70, "layers": [[259.285, 0.08], [1319.572, 0.1]]}
+    nothing = usage.history_layers(HISTORY, set(), usage.ELECTRIC_TARIFF)
+
+    layers, _, amount = usage.settle_layers(
+        previous, 1435.55, 141.24, 143.0, usage.ELECTRIC_TARIFF, OCTOBER, nothing
+    )
+
+    assert amount is None
+    assert layers == [[115.978, 0.08], [1319.572, 0.1]]
+
+
+def test_last_top_up():
+    assert usage.last_top_up(HISTORY) == {
+        "last_top_up_time": "2026-10-01T08:30:01",
+        "last_top_up_amount": 250.0,
+        "last_top_up_units": 3320.0,
+    }
+    assert usage.last_top_up([]) == {}

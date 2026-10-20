@@ -75,7 +75,7 @@ None of these are faults:
 - **Electric hours can arrive late or in bulk.** USMS sometimes posts an hour late, so a bar is low and the next one catches up.
 - **About once a day, one hour shows 0** and the next hour catches up. That's USMS ending the session and UZMZ waiting an hour before [signing in again](#automatic-sign-in).
 - **The balance is an estimate between sign-ins.** It's worked out from your usage and the tariff, and resets to USMS's own figure at every sign-in, so it can shift by a few cents then.
-- **Top-up price** shows unknown until UZMZ sees your first top-up of the month, or until the 1st. It can't see top-ups from before it was set up.
+- **Top-ups from before setup are included.** UZMZ reads your top-up history from USMS, so the planner knows this month's top-ups straight away.
 
 ### When USMS asks you to sign in again
 
@@ -207,10 +207,10 @@ For example, a B$30 water top-up early in the month buys 54.54 m³ at B$0.11 and
 Your balance is what your remaining units cost, and USMS uses the oldest units first. UZMZ follows this:
 
 - It keeps the units left at each price, and checks them against USMS's balance at every sign-in.
-- A **top-up** (units and balance up by more than your usage explains) adds units at the prices that month's top-ups so far give them. UZMZ only sees a top-up at the next sign-in. A top-up on the USMS website or app ends UZMZ's session, so that's within the hour with automatic sign-in on.
+- A **top-up** adds units at the prices that month's earlier top-ups give them. UZMZ reads each one from USMS's **top-up history** (the Topup Transaction page: date, amount, units credited), so the amounts are exact, including top-ups made before UZMZ was set up. It checks the history at every sign-in, because the home page only shows a top-up after a new sign-in. A top-up on the USMS website or app ends UZMZ's session, so that's within the hour with automatic sign-in on. If the history can't be read, UZMZ falls back to spotting the jump in units and balance.
 - When it first starts, or if its figures no longer match USMS's balance, it works the prices out from the balance per unit.
 
-The **top-up planner** sensors (in the [table above](#sensors)) show what you've topped up this month, the price your next top-up starts at, and how much more you can top up at that price; **Top-up Advice** says it in one sentence. They know this month's price once UZMZ has seen a top-up this month, or from the 1st. **Next Price Change** works from the units you already have, so it's known straight away: for example, when your cheap water runs out and the B$0.44 units start.
+The **top-up planner** sensors (in the [table above](#sensors)) show what you've topped up this month, the price your next top-up starts at, and how much more you can top up at that price; **Top-up Advice** says it in one sentence. The Topped Up This Month sensor also has the last top-up's time, amount and units as attributes. **Next Price Change** works from the units you already have, so it's known straight away: for example, when your cheap water runs out and the B$0.44 units start.
 
 What this means in practice:
 

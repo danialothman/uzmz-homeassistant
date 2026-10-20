@@ -1,7 +1,7 @@
 """Data update coordinator for UZMZ integration."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
@@ -25,6 +25,7 @@ from .const import (
     CONF_FRESH_SESSION,
     CONF_PLATFORM_VERSION,
     CONF_SESSION_COOKIES,
+    CONF_TOP_UP_SEEN,
     CONF_TOP_UPS,
     CONF_USAGE_ANCHORS,
     CONF_USAGE_CHANGED,
@@ -41,9 +42,12 @@ from .usage import (
     WATER_TARIFF,
     average_daily_use,
     current_readings,
+    history_layers,
+    history_month,
     infer_layers,
     last_estimate,
     last_posted,
+    last_top_up,
     learn_rate,
     make_anchor,
     month_top_ups,
@@ -183,6 +187,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         seen = dict(entry_data.get(CONF_USAGE_SEEN) or {})
         changed = dict(entry_data.get(CONF_USAGE_CHANGED) or {})
         top_ups = dict(entry_data.get(CONF_TOP_UPS) or {})
+        top_up_seen = dict(entry_data.get(CONF_TOP_UP_SEEN) or {})
         now = datetime.now(BRUNEI_TZ)
         today = now.date()
         # Keep the fresh-login flag until every meter has been anchored.
@@ -233,6 +238,28 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             if meter in changed:
                 readings["usage_updated"] = changed[meter]
 
+            # USMS's own top-up list: exact amounts, even from before setup.
+            # Read at each sign-in (when the snapshot can include new ones),
+            # and once after setup or an upgrade.
+            history = None
+            if tariff and (new_session or meter not in top_up_seen):
+                history = await self._async_fetch_top_ups(meter, path, today)
+            new_top_ups = None
+            if history is not None:
+                top_ups[meter] = history_month(history, today)
+                readings.update(top_up_plan(top_ups[meter], tariff))
+                readings.update(last_top_up(history))
+                readings["top_up_advice"] = top_up_advice(top_ups[meter], tariff, unit)
+                ids = {top_up["id"] for top_up in history}
+                if meter in top_up_seen and new_session:
+                    new_top_ups = history_layers(history, ids - set(top_up_seen[meter]), tariff)
+                if new_session:
+                    top_up_seen[meter] = sorted(ids)
+                else:
+                    # First read: the anchor already includes what came before it.
+                    signed_in = (anchor or {}).get("time", now.isoformat())[:19]
+                    top_up_seen[meter] = sorted(t["id"] for t in history if t["time"] <= signed_in)
+
             if new_session:
                 if anchor and fresh:
                     rates[meter] = learn_rate(anchor, units, balance, rates.get(meter))
@@ -246,7 +273,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                         else 0.0
                     )
                     layers, top_ups[meter], topped_up = settle_layers(
-                        anchor, units, balance, used, tariff, top_ups[meter]
+                        anchor, units, balance, used, tariff, top_ups[meter], new_top_ups
                     )
                     if topped_up is not None:
                         _LOGGER.info("USMS %s top-up of B$%.2f seen at sign-in", meter, topped_up)
@@ -257,6 +284,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                     approximate=(legacy or snapshot_changed) and not fresh,
                     start=start,
                     layers=layers,
+                    signed_in=now.isoformat(),
                 )
                 anchors[meter] = anchor
             elif tariff and "layers" not in anchor:
@@ -288,8 +316,33 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             CONF_USAGE_SEEN: seen,
             CONF_USAGE_CHANGED: changed,
             CONF_TOP_UPS: top_ups,
+            CONF_TOP_UP_SEEN: top_up_seen,
             CONF_FRESH_SESSION: fresh and unanchored,
         }
+
+    async def _async_fetch_top_ups(
+        self, meter: str, path: str, today: date
+    ) -> Optional[list[Dict[str, Any]]]:
+        """USMS's top-up history from the 1st of last month, or None if unreadable.
+
+        From last month so a top-up made just before the 1st is priced right.
+        """
+        start = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+        try:
+            history = await self.hass.async_add_executor_job(
+                self.client.fetch_top_ups, path, start, today
+            )
+        except SessionExpired:
+            raise
+        except USMSError as err:
+            _LOGGER.warning("Could not read USMS %s top-up history: %s", meter, err)
+            return None
+        # The page shows the meter of the last usage report opened; make sure.
+        expected = "kWh" if meter == "electric" else "m"
+        if any(not top_up["unit"].startswith(expected) for top_up in history):
+            _LOGGER.warning("USMS %s top-up history showed another meter's top-ups", meter)
+            return None
+        return history
 
     async def _async_handle_failure(self, reason: str) -> None:
         """Count a transient failure, switch to fast retry and notify if it persists."""

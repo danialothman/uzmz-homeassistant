@@ -47,6 +47,17 @@ REQUEST_TIMEOUT = 30
 # Usage History report types: (cboType value, cboType text)
 REPORT_DAILY = ("1", "Daily (Max 1 month)")
 REPORT_HOURLY = ("3", "Hourly (Max 1 day)")
+# Topup Transaction report types: (cboReportType value, text)
+REPORT_TOP_UPS = ("0", "TopUp History")
+# Top-up History columns, by the start of their header (lowercase).
+TOP_UP_COLUMNS = {
+    "time": "topup date",
+    "id": "transaction no",
+    "amount": "topup amount",
+    "debt": "initial loan",
+    "recharge": "actual recharge",
+    "units": "units credited",
+}
 _EPOCH = dt.datetime(1970, 1, 1)
 
 
@@ -274,31 +285,50 @@ class USMSClient:
                 usage[today.isoformat()] = round(sum(value for _, value in rows), 3)
         return usage
 
+    def fetch_top_ups(self, usage_path: str, start: dt.date, today: dt.date) -> list[Dict[str, Any]]:
+        """Return a meter's top-ups from start to today, oldest first.
+
+        Each is {"time" (local ISO), "id", "amount", "debt", "recharge",
+        "units", "unit"} from the Topup Transaction page's TopUp History.
+        That page ignores its meter parameter and uses the meter of the last
+        Usage History page opened, so that is opened first. Raises
+        SessionExpired.
+        """
+        with self._lock:
+            page = self._get(urllib.parse.urljoin(self.base_url, usage_path))
+            if "SessionExpire" in page.url or "ResLogin" in page.url:
+                raise SessionExpired("USMS session is no longer logged in")
+            html = self._run_report(
+                usage_path.replace("UsageHistory", "TransactionHistory"),
+                {"cboReportType_VI": REPORT_TOP_UPS[0], "cboReportType": REPORT_TOP_UPS[1]},
+                start,
+                today,
+            )
+        return _parse_top_ups(html)
+
     def _usage_report(
         self, usage_path: str, report: tuple[str, str], start: dt.date, end: dt.date
     ) -> list[tuple[str, float]]:
         """Run a Usage History report for one meter and return its rows."""
-        url = urllib.parse.urljoin(self.base_url, usage_path)
+        return _parse_usage_rows(
+            self._run_report(usage_path, {"cboType_VI": report[0], "cboType": report[1]}, start, end)
+        )
+
+    def _run_report(self, path: str, fields: Dict[str, str], start: dt.date, end: dt.date) -> str:
+        """Open a report page, search it for start..end, and return the result page."""
+        url = urllib.parse.urljoin(self.base_url, path)
         response = self._get(url)
         if "SessionExpire" in response.url or "ResLogin" in response.url:
             raise SessionExpired("USMS session is no longer logged in")
         form = BeautifulSoup(response.text, "html.parser").find("form")
         if not form:
-            raise SiteError("Usage report page did not contain a form")
+            raise SiteError("USMS report page did not contain a form")
         data = {
             tag["name"]: tag.get("value", "")
             for tag in form.find_all("input")
             if tag.get("name") and tag.get("type") not in ("submit", "button", "image")
         }
-        data.update(
-            {
-                "__EVENTTARGET": "",
-                "__EVENTARGUMENT": "",
-                "cboType_VI": report[0],
-                "cboType": report[1],
-                "btnRefresh": "Search",
-            }
-        )
+        data.update({"__EVENTTARGET": "", "__EVENTARGUMENT": "", **fields, "btnRefresh": "Search"})
         for field, day in (("cboDateFrom", start), ("cboDateTo", end)):
             data[field] = day.strftime("%d/%m/%Y")
             # The server reads the date edit's raw value (milliseconds, local
@@ -306,8 +336,7 @@ class USMSClient:
             raw = str(int((dt.datetime.combine(day, dt.time()) - _EPOCH).total_seconds() * 1000))
             data[f"{field}$State"] = '{"rawValue":"%s"}' % raw
             data[f"{field}_Raw"] = raw
-        response = self._request("post", response.url, data=data)
-        return _parse_usage_rows(response.text)
+        return self._request("post", response.url, data=data).text
 
     def fetch_meter_data(self) -> Dict[str, Any]:
         """Fetch and parse meter data. Raises SessionExpired if logged out."""
@@ -490,6 +519,45 @@ def _parse_usage_rows(html: str) -> list[tuple[str, float]]:
             except ValueError:
                 _LOGGER.debug("Skipping usage row %s", cells[:2])
     return rows
+
+
+def _parse_top_ups(html: str) -> list[Dict[str, Any]]:
+    """Parse a TopUp History grid, oldest first. Columns are found by header."""
+    soup = BeautifulSoup(html, "html.parser")
+    error = soup.find("span", {"id": ELEM_LOGIN_ERROR})
+    if error and error.get_text(strip=True):
+        raise SiteError(f"USMS top-up history: {error.get_text(' ', strip=True)}")
+    header_row = soup.select_one("tr[id*=DXHeadersRow]")
+    if header_row is None:
+        raise SiteError("USMS top-up history has no table")
+    headers = [td.get_text(" ", strip=True) for td in header_row.find_all("td", recursive=False)]
+    columns: Dict[str, int] = {}
+    unit = ""
+    for key, start in TOP_UP_COLUMNS.items():
+        for index, header in enumerate(headers):
+            if header.lower().startswith(start):
+                columns[key] = index
+                if key == "units":
+                    match = re.search(r"\(([^)]*)\)", header)
+                    unit = match.group(1) if match else ""
+                break
+    missing = [key for key in TOP_UP_COLUMNS if key not in columns]
+    if missing:
+        raise SiteError(f"USMS top-up history is missing columns: {', '.join(missing)}")
+
+    top_ups = []
+    for tr in soup.select("tr[id*=DXDataRow]"):
+        cells = [td.get_text(strip=True) for td in tr.find_all("td", recursive=False)]
+        if len(cells) <= max(columns.values()):
+            continue
+        try:
+            when = dt.datetime.strptime(cells[columns["time"]], "%d/%m/%Y %H:%M:%S")
+            row = {key: float(cells[columns[key]].replace(",", "")) for key in ("amount", "debt", "recharge", "units")}
+        except ValueError:
+            _LOGGER.debug("Skipping top-up row %s", cells[: columns["time"] + 1])
+            continue
+        top_ups.append({"time": when.isoformat(), "id": cells[columns["id"]], **row, "unit": unit})
+    return sorted(top_ups, key=lambda top_up: top_up["time"])
 
 
 def _parse_platform_version(soup: BeautifulSoup) -> Optional[str]:

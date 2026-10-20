@@ -401,6 +401,9 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
             "daily_use",
             "month_to_date",
             "bought_this_month",
+            "last_top_up_time",
+            "last_top_up_amount",
+            "last_top_up_units",
             "approximate",
         ):
             if key in meter_data:
