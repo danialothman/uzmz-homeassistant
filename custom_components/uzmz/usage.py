@@ -14,9 +14,10 @@ time) also handles data USMS posts late, like water's daily figures.
 
 Prepaid meters are priced at top-up time, not when units are used: the
 published tariff bands apply to the units bought in a calendar month
-("tiered rates restart each month; top-ups earlier in the month use up the
-cheaper blocks first"), and the balance is what the remaining units cost.
-Units are used oldest first. So for electricity and water UZMZ keeps the
+("Tiered rates restart each month. Top-ups earlier in the month use up the
+cheaper blocks first.", as USMS Calculator by brunei.app explains it:
+https://usmscalculator.brunei.app/), and the balance is what the remaining
+units cost. Units are used oldest first. So for electricity and water UZMZ keeps the
 remaining units as priced layers (oldest first), checked against USMS's own
 balance at every sign-in:
 
