@@ -279,6 +279,80 @@ def top_up_plan(top_ups: dict[str, Any], tariff) -> dict[str, Any]:
     }
 
 
+def _money(value: float) -> str:
+    return f"B${value:,.2f}"
+
+
+def _price(rate: float, unit: str) -> str:
+    return f"B${rate:.2f}/{unit}"
+
+
+def top_up_advice(top_ups: dict[str, Any], tariff, unit: str) -> str:
+    """One sentence on what to top up this month, for people, not automations."""
+    first_upper, first_rate = tariff[0]
+    bought = top_ups.get("units")
+    if bought is None:
+        return (
+            f"Prices restart each month: the first {_money(first_upper * first_rate)} buys "
+            f"{first_upper:g} {unit} at {_price(first_rate, unit)}. UZMZ will know this "
+            "month's price after your next top-up, or from the 1st."
+        )
+    rate = marginal_rate(bought, tariff)
+    upper = next((u for u, _ in tariff if u is not None and bought < u), None)
+    if upper is None:
+        return (
+            f"This month's top-ups now buy at {_price(rate, unit)}, the highest price. "
+            "Prices restart on the 1st."
+        )
+    room = upper - bought
+    return (
+        f"Up to {_money(room * rate)} more this month buys {room:,.{2 if room < 100 else 0}f} {unit} at "
+        f"{_price(rate, unit)}; above that, {_price(marginal_rate(upper, tariff), unit)}. "
+        "Prices restart on the 1st."
+    )
+
+
+def average_daily_use(usage_now: dict[str, float], today: dt.date, days: int = 7) -> Optional[float]:
+    """Average use over the last few complete days the reports have posted.
+
+    Days not posted yet (water lags a day or more) show 0 and are skipped.
+    """
+    posted = sorted(
+        (day, value) for day, value in usage_now.items() if day < today.isoformat() and value > 0
+    )[-days:]
+    if not posted:
+        return None
+    return round(sum(value for _, value in posted) / len(posted), 3)
+
+
+def next_price_change(
+    layers: list[list[float]], daily_use: Optional[float], today: dt.date
+) -> dict[str, Any]:
+    """When the units in use now run out and the next price starts.
+
+    Prices within a cent are the same price (a layer inferred from the
+    balance can be a fraction off a band rate).
+    """
+    result: dict[str, Any] = {
+        "price_change": None, "price_now": None, "next_price": None, "units_at_price_now": None,
+    }
+    if not layers:
+        return result
+    price_now = result["price_now"] = layers[0][1]
+    units = 0.0
+    for layer_units, rate in layers:
+        if round(rate, 2) != round(price_now, 2):
+            result["next_price"] = rate
+            break
+        units += layer_units
+    result["units_at_price_now"] = round(units, 3)
+    if result["next_price"] is not None and daily_use:
+        days = int(units / daily_use)
+        result["price_change"] = (today + dt.timedelta(days=days)).isoformat()
+    result["daily_use"] = daily_use
+    return result
+
+
 def make_anchor(
     units: float,
     balance: float,
@@ -405,6 +479,11 @@ ESTIMATE_KEYS = (
     "rate_is_average",
     "balance_method",
     "price_layers",
+    "price_change",
+    "price_now",
+    "next_price",
+    "units_at_price_now",
+    "daily_use",
     "month_to_date",
     "approximate",
     "usage_updated",
