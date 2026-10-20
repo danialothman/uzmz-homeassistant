@@ -21,13 +21,17 @@ from .const import (
     ICON_ELECTRIC,
     ICON_WATER,
     ICON_CURRENCY,
+    ICON_PRICE,
     ICON_STATUS,
+    ICON_TOP_UP,
     ICON_UPDATE,
     ICON_USAGE_UPDATED,
     KNOWN_PLATFORM_VERSION,
     UNIT_KWH,
     UNIT_CUBIC_METER,
     UNIT_CURRENCY,
+    UNIT_CURRENCY_PER_CUBIC_METER,
+    UNIT_CURRENCY_PER_KWH,
 )
 from .coordinator import UZMZDataUpdateCoordinator
 
@@ -96,6 +100,37 @@ async def async_setup_entry(
             SensorDeviceClass.TIMESTAMP,
             None,
         ),
+        # What a top-up buys now (prices restart each month; see usage.py).
+        UZMZSensor(
+            coordinator,
+            "electric",
+            "topped_up_this_month",
+            "Electric Topped Up This Month",
+            UNIT_CURRENCY,
+            ICON_TOP_UP,
+            SensorDeviceClass.MONETARY,
+            None,
+        ),
+        UZMZSensor(
+            coordinator,
+            "electric",
+            "top_up_price",
+            "Electric Top-up Price",
+            UNIT_CURRENCY_PER_KWH,
+            ICON_PRICE,
+            None,
+            None,
+        ),
+        UZMZSensor(
+            coordinator,
+            "electric",
+            "top_up_left_at_price",
+            "Electric Top-up Left at This Price",
+            UNIT_CURRENCY,
+            ICON_TOP_UP,
+            SensorDeviceClass.MONETARY,
+            None,
+        ),
     ])
     
     # Water meter sensors
@@ -148,6 +183,37 @@ async def async_setup_entry(
             None,
             ICON_USAGE_UPDATED,
             SensorDeviceClass.TIMESTAMP,
+            None,
+        ),
+        # What a top-up buys now (prices restart each month; see usage.py).
+        UZMZSensor(
+            coordinator,
+            "water",
+            "topped_up_this_month",
+            "Water Topped Up This Month",
+            UNIT_CURRENCY,
+            ICON_TOP_UP,
+            SensorDeviceClass.MONETARY,
+            None,
+        ),
+        UZMZSensor(
+            coordinator,
+            "water",
+            "top_up_price",
+            "Water Top-up Price",
+            UNIT_CURRENCY_PER_CUBIC_METER,
+            ICON_PRICE,
+            None,
+            None,
+        ),
+        UZMZSensor(
+            coordinator,
+            "water",
+            "top_up_left_at_price",
+            "Water Top-up Left at This Price",
+            UNIT_CURRENCY,
+            ICON_TOP_UP,
+            SensorDeviceClass.MONETARY,
             None,
         ),
     ])
@@ -282,7 +348,9 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
             "rate",
             "rate_is_average",
             "balance_method",
+            "price_layers",
             "month_to_date",
+            "bought_this_month",
             "approximate",
         ):
             if key in meter_data:

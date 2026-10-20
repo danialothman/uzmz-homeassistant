@@ -14,6 +14,7 @@ A Home Assistant custom integration for monitoring prepaid electric and water me
 - 🔁 **Automatic sign-in** (optional): with **Remember password** on, UZMZ signs in again by itself an hour after USMS ends the session, as long as USMS doesn't ask for a captcha
 - 🔔 **Sign-in alerts**: a notification when USMS ends the session and you need to sign in again
 - 📊 **History**: all sensors are recorded by Home Assistant for graphs and statistics
+- 💵 **Top-up planner**: what you've topped up this month, the price your next top-up buys at, and how much more you can top up at that price
 - 🔄 **Configurable polling**: default every hour
 
 ## Quick start
@@ -57,7 +58,7 @@ The button opens UZMZ in your own Home Assistant's HACS. Or add it by hand:
    - **Base URL**: optional, defaults to `https://www.usms.com.bn/SmartMeter/`
 3. Type the captcha shown in the next step, if USMS shows one.
 
-The integration signs in once and then keeps that session alive.
+The integration signs in once and then keeps that session alive. USMS locks an account after 5 failed logins, so UZMZ only submits a login when you do, or once per ended session if you turn on [automatic sign-in](#automatic-sign-in).
 
 ### Remember password
 
@@ -73,7 +74,8 @@ None of these are faults:
 - **Water usage arrives about a day late.** USMS posts it the next day, so today's water bar stays empty until then.
 - **Electric hours can arrive late or in bulk.** USMS sometimes posts an hour late, so a bar is low and the next one catches up.
 - **About once a day, one hour shows 0** and the next hour catches up. That's USMS ending the session and UZMZ waiting an hour before [signing in again](#automatic-sign-in).
-- **The balance is an estimate between sign-ins.** It's worked out from your usage and the tariff, and resets to USMS's own figure at every sign-in, so it can shift by a few cents then. USMS locks an account after 5 failed logins, so UZMZ only submits a login when you do, or once per ended session if you turn on [automatic sign-in](#automatic-sign-in).
+- **The balance is an estimate between sign-ins.** It's worked out from your usage and the tariff, and resets to USMS's own figure at every sign-in, so it can shift by a few cents then.
+- **Top-up price** shows unknown until UZMZ sees your first top-up of the month, or until the 1st. It can't see top-ups from before it was set up.
 
 ### When USMS asks you to sign in again
 
@@ -155,6 +157,9 @@ Entity IDs are generated from the device and sensor names. These are the default
 | `sensor.uzmz_electric_meter_electric_meter_status` | `sensor.uzmz_water_meter_water_meter_status` | Meter status, e.g. `ACTIVE` |
 | `sensor.uzmz_electric_meter_electric_last_updated` | `sensor.uzmz_water_meter_water_last_updated` | Date of the USMS reading |
 | `sensor.uzmz_electric_meter_electric_usage_updated` | `sensor.uzmz_water_meter_water_usage_updated` | When USMS last posted new usage (see [USMS falling behind](#usms-falling-behind)) |
+| `sensor.uzmz_electric_meter_electric_topped_up_this_month` | `sensor.uzmz_water_meter_water_topped_up_this_month` | B$ topped up this calendar month (see [Top-up prices](#top-up-prices)) |
+| `sensor.uzmz_electric_meter_electric_top_up_price` | `sensor.uzmz_water_meter_water_top_up_price` | The price per kWh / m³ your next top-up buys at |
+| `sensor.uzmz_electric_meter_electric_top_up_left_at_this_price` | `sensor.uzmz_water_meter_water_top_up_left_at_this_price` | B$ you can still top up at that price this month (none in the last band) |
 
 The integration also has `sensor.uzmz_integration_last_refresh` (last successful sync) and `sensor.uzmz_integration_next_refresh`.
 
@@ -175,27 +180,35 @@ USMS's home page keeps showing the readings from the moment you signed in, for a
    - electricity hour by hour;
    - water day by day, including days USMS posts late.
 3. Shows **remaining units = units at sign-in − usage since**. This matches what USMS shows after a fresh sign-in.
-4. Shows **balance = balance at sign-in − cost of the usage since**. This is an **estimate**, and it returns to USMS's exact figure at every sign-in.
-   - **Electricity** is costed with the [DES residential tariff](https://www.des.gov.bn/electricity-tariff/):
+4. Shows **balance = balance at sign-in − cost of the usage since**. This is an **estimate**, and it returns to USMS's exact figure at every sign-in. The cost comes from [what your units cost when you bought them](#top-up-prices).
 
-     | Monthly usage | Rate |
-     |---|---|
-     | 1–600 kWh | B$0.01/kWh |
-     | 601–2,000 kWh | B$0.08/kWh |
-     | 2,001–4,000 kWh | B$0.10/kWh |
-     | above 4,000 kWh | B$0.12/kWh |
+The balance sensors show how each reading was calculated in their attributes: `estimated`, `balance_method` (`top-up prices`, `learned rate` or `average rate`), `rate` (what the units you're using now cost), `price_layers` (the units left at each price, oldest first), `used_since_sign_in`, `month_to_date` (this month's usage, for information), `sign_in_units`, `sign_in_balance`, `sign_in_date`, `rate_is_average`. `approximate` is true when the sign-in time wasn't known, for example right after upgrading from an older version.
 
-     Each kWh is charged in the band it falls in, using this month's total so far from the reports. The count restarts on the 1st.
-   - **Water** is costed with the domestic water tariff [listed by USMS](https://www.usms.com.bn/web/tariffs/):
+### Top-up prices
 
-     | Monthly usage | Rate |
-     |---|---|
-     | first 54.54 m³ | B$0.11/m³ |
-     | above 54.54 m³ | B$0.44/m³ |
+On a prepaid meter you pay when you **top up**, not when you use the units. The tariff bands apply to how much you've topped up in the calendar month, and restart on the 1st:
 
-     The band is per unit in the building, so UZMZ assumes a house (one unit).
+| Electricity ([DES residential tariff](https://www.des.gov.bn/electricity-tariff/)), units bought this month | Price |
+|---|---|
+| first 600 kWh (the first B$6) | B$0.01/kWh |
+| 601–2,000 kWh (up to B$118 in total) | B$0.08/kWh |
+| 2,001–4,000 kWh (up to B$318) | B$0.10/kWh |
+| above 4,000 kWh | B$0.12/kWh |
 
-The balance sensors show how each reading was calculated in their attributes: `estimated`, `balance_method` (`tariff`, `learned rate` or `average rate`), `used_since_sign_in`, `month_to_date`, `sign_in_units`, `sign_in_balance`, `sign_in_date`, `rate` (for electricity, the current band's rate), `rate_is_average`. `approximate` is true when the sign-in time wasn't known, for example right after upgrading from an older version.
+| Water ([listed by USMS](https://www.usms.com.bn/web/tariffs/)), units bought this month | Price |
+|---|---|
+| first 54.54 m³ (the first B$6) | B$0.11/m³ |
+| above 54.54 m³ | B$0.44/m³ |
+
+For example, a B$30 water top-up early in the month buys 54.54 m³ at B$0.11 and then 54.5 m³ at B$0.44. Topping up B$6 a month instead keeps all your water at B$0.11. The water band is per unit in the building, so UZMZ assumes a house (one unit).
+
+Your balance is what your remaining units cost, and USMS uses the oldest units first. UZMZ follows this:
+
+- It keeps the units left at each price, and checks them against USMS's balance at every sign-in.
+- A **top-up** (units and balance up by more than your usage explains) adds units at the prices that month's top-ups so far give them. UZMZ only sees a top-up at the next sign-in. A top-up on the USMS website or app ends UZMZ's session, so that's within the hour with automatic sign-in on.
+- When it first starts, or if its figures no longer match USMS's balance, it works the prices out from the balance per unit.
+
+The **top-up planner** sensors (in the [table above](#sensors)) show what you've topped up this month, the price your next top-up starts at, and how much more you can top up at that price. They're unknown until UZMZ has seen a top-up this month, or from the 1st. To try other amounts, the unofficial [USMS Calculator](https://usmscalculator.brunei.app/topup) works the same way.
 
 **After a top-up**, the readings don't include it until the next sign-in. To sign in straight away, go to **Settings** → **Devices & Services** → **UZMZ** → ⋮ → **Reconfigure** and solve the captcha.
 
@@ -244,7 +257,7 @@ You then get daily, weekly and monthly usage and spend. The costs follow the tar
   - **Sync now**: a button for an immediate update.
 - **Electric and Water**:
   - **Balance gauge**: red and yellow at the USMS SMS-alert levels.
-  - **Readings**: remaining units, days left, meter status, and the USMS reading date.
+  - **Readings**: remaining units, days left, meter status, the USMS reading date, and the [top-up planner](#top-up-prices).
 - **Usage**:
   - **Daily charts**: kWh and m³ used per day.
   - **Balance charts**: 30-day electric and water balance.

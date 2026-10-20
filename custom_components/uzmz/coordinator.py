@@ -25,6 +25,7 @@ from .const import (
     CONF_FRESH_SESSION,
     CONF_PLATFORM_VERSION,
     CONF_SESSION_COOKIES,
+    CONF_TOP_UPS,
     CONF_USAGE_ANCHORS,
     CONF_USAGE_CHANGED,
     CONF_USAGE_RATES,
@@ -39,13 +40,17 @@ from .usage import (
     ELECTRIC_TARIFF,
     WATER_TARIFF,
     current_readings,
+    infer_layers,
     last_estimate,
     last_posted,
     learn_rate,
     make_anchor,
+    month_top_ups,
     new_session_start,
     parse_number,
     recent_usage,
+    settle_layers,
+    top_up_plan,
     usage_changed,
     window_start,
 )
@@ -174,6 +179,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         rates = dict(entry_data.get(CONF_USAGE_RATES) or {})
         seen = dict(entry_data.get(CONF_USAGE_SEEN) or {})
         changed = dict(entry_data.get(CONF_USAGE_CHANGED) or {})
+        top_ups = dict(entry_data.get(CONF_TOP_UPS) or {})
         now = datetime.now(BRUNEI_TZ)
         today = now.date()
         # Keep the fresh-login flag until every meter has been anchored.
@@ -186,6 +192,11 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             if units is None or balance is None or not path:
                 continue
             anchor = anchors.get(meter)
+            # Both have published tariffs, applied to each month's top-ups.
+            tariff = {"electric": ELECTRIC_TARIFF, "water": WATER_TARIFF}.get(meter)
+            if tariff:
+                top_ups[meter] = month_top_ups(top_ups.get(meter), today)
+                readings.update(top_up_plan(top_ups[meter], tariff))
             # USMS only changes the Home snapshot at login, so a changed
             # snapshot without a flow login means a session we didn't see start.
             snapshot_changed = bool(anchor) and (
@@ -220,15 +231,33 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             if new_session:
                 if anchor and fresh:
                     rates[meter] = learn_rate(anchor, units, balance, rates.get(meter))
+                layers = None
+                if tariff:
+                    # Price what's left: usage since the last sign-in comes off
+                    # the old layers, and a top-up adds new ones.
+                    used = (
+                        current_readings(anchor, usage_now, start, None, tariff)["used_since_sign_in"]
+                        if anchor
+                        else 0.0
+                    )
+                    layers, top_ups[meter], topped_up = settle_layers(
+                        anchor, units, balance, used, tariff, top_ups[meter]
+                    )
+                    if topped_up is not None:
+                        _LOGGER.info("USMS %s top-up of B$%.2f seen at sign-in", meter, topped_up)
+                    readings.update(top_up_plan(top_ups[meter], tariff))
                 anchor = make_anchor(
                     units, balance, today, usage_now,
                     approximate=(legacy or snapshot_changed) and not fresh,
                     start=start,
+                    layers=layers,
                 )
                 anchors[meter] = anchor
+            elif tariff and "layers" not in anchor:
+                # An anchor from before 1.8.0: price its units once.
+                anchor = {**anchor, "layers": infer_layers(anchor["units"], anchor["balance"], tariff)}
+                anchors[meter] = anchor
 
-            # Both have published tariffs tiered by monthly use.
-            tariff = {"electric": ELECTRIC_TARIFF, "water": WATER_TARIFF}.get(meter)
             current = current_readings(anchor, usage_now, start, rates.get(meter), tariff)
             readings.update(current)
             readings.update(
@@ -246,6 +275,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             CONF_USAGE_RATES: rates,
             CONF_USAGE_SEEN: seen,
             CONF_USAGE_CHANGED: changed,
+            CONF_TOP_UPS: top_ups,
             CONF_FRESH_SESSION: fresh and unanchored,
         }
 
