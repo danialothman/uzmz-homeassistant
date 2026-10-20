@@ -507,3 +507,102 @@ def test_requests_say_they_come_from_uzmz():
 def test_version_matches_manifest():
     manifest = Path(__file__).parents[1] / "custom_components" / "uzmz" / "manifest.json"
     assert json.loads(manifest.read_text(encoding="utf-8"))["version"] == VERSION
+
+
+# ----- top-up history -----
+
+
+def top_up_page(rows=(), unit="kWh", error=""):
+    """The Topup Transaction page, shaped like the live one (2026-10-20)."""
+    headers = ["Topup Date", "Transaction No", "Meter No", "Topup Amount ($)",
+               "Initial Loan/Debt Cleared ($)", "Actual Recharge Amount ($)",
+               f"Units Credited ({unit})", "Payment Mode", "Site Name", "Source"]
+    head = "".join(f'<td class="dxgvHeader"><table><tr><td>{h}</td></tr></table></td>' for h in headers)
+    body = "".join(
+        f'<tr id="grid_DXDataRow{i}" class="dxgvDataRow">'
+        + "".join(f'<td class="dxgv">{c}</td>' for c in row)
+        + "</tr>"
+        for i, row in enumerate(rows)
+    )
+    return f"""
+    <html><body><form method="post" action="./TransactionHistory?p=RUxFQw%3d%3d">
+      <input type="hidden" name="__VIEWSTATE" value="vs">
+      <input type="hidden" name="cboReportType_VI" value="0">
+      <input type="text" name="cboReportType" value="TopUp History">
+      <input type="text" name="cboDateFrom" value="20/10/2026">
+      <input type="text" name="cboDateTo" value="20/10/2026">
+      <input type="submit" name="btnRefresh" value="Search">
+      <span id="pcErr_lblErrMsg">{error}</span>
+      <table id="grid_DXMainTable"><tr id="grid_DXHeadersRow0">{head}</tr>{body}</table>
+    </form></body></html>
+    """
+
+
+def _row(when, amount, units, tx="1234567890123"):
+    return [when, tx, "55000000", amount, "0.00", amount, units, "ONLINE_PAYMENT", "", "SelfCare"]
+
+
+def test_top_ups_are_read_from_the_transaction_page(client):
+    client.responses = [
+        response(report_page(), url=BASE_URL + "Report/UsageHistory?p=RUxFQw=="),
+        response(top_up_page(), url=BASE_URL + "Report/TransactionHistory?p=RUxFQw=="),
+        response(top_up_page([
+            _row("01/10/2026 08:30:01", "250.00", "3320.000", "T2"),
+            _row("01/09/2026 13:21:13", "250.00", "3,320.000", "T1"),
+        ])),
+    ]
+
+    top_ups = client.fetch_top_ups(
+        "Report/UsageHistory?p=RUxFQw==", api.dt.date(2026, 9, 1), api.dt.date(2026, 10, 20)
+    )
+
+    assert top_ups == [
+        {"time": "2026-09-01T13:21:13", "id": "T1", "amount": 250.0, "debt": 0.0,
+         "recharge": 250.0, "units": 3320.0, "unit": "kWh"},
+        {"time": "2026-10-01T08:30:01", "id": "T2", "amount": 250.0, "debt": 0.0,
+         "recharge": 250.0, "units": 3320.0, "unit": "kWh"},
+    ]
+    # The usage page is opened first: the transaction page uses its meter.
+    assert client.requests[0][1].endswith("Report/UsageHistory?p=RUxFQw==")
+    assert client.requests[1][1].endswith("Report/TransactionHistory?p=RUxFQw==")
+    search = client.requests[2][2]["data"]
+    assert (search["cboReportType_VI"], search["cboReportType"]) == ("0", "TopUp History")
+    # Like the usage reports, the dates are read from their raw values.
+    assert search["cboDateFrom_Raw"] == "1788220800000"  # 2026-09-01
+
+
+def test_no_top_ups_is_an_empty_list(client):
+    client.responses = [response(report_page()), response(top_up_page()), response(top_up_page(unit="m³"))]
+    assert client.fetch_top_ups("Report/UsageHistory?p=x", api.dt.date(2026, 9, 1), api.dt.date(2026, 10, 20)) == []
+
+
+def test_top_up_page_error_is_raised(client):
+    client.responses = [
+        response(report_page()),
+        response(top_up_page()),
+        response(top_up_page(error="Error while creating meterNumber size")),
+    ]
+    with pytest.raises(api.SiteError, match="meterNumber"):
+        client.fetch_top_ups("Report/UsageHistory?p=x", api.dt.date(2026, 9, 1), api.dt.date(2026, 10, 20))
+
+
+def test_top_up_page_without_its_columns_is_a_site_error(client):
+    client.responses = [response(report_page()), response(top_up_page()), response(report_page())]
+    with pytest.raises(api.SiteError):
+        client.fetch_top_ups("Report/UsageHistory?p=x", api.dt.date(2026, 9, 1), api.dt.date(2026, 10, 20))
+
+
+def test_water_top_ups_keep_their_unit(client):
+    client.responses = [
+        response(report_page()),
+        response(top_up_page(unit="m³")),
+        response(top_up_page([_row("10/10/2026 16:10:30", "30.00", "109.086")], unit="m³")),
+    ]
+    (top_up,) = client.fetch_top_ups("Report/UsageHistory?p=x", api.dt.date(2026, 9, 1), api.dt.date(2026, 10, 20))
+    assert (top_up["units"], top_up["unit"]) == (109.086, "m³")
+
+
+def test_top_up_history_detects_expired_session(client):
+    client.responses = [response("<html></html>", url=BASE_URL + "SessionExpire")]
+    with pytest.raises(api.SessionExpired):
+        client.fetch_top_ups("Report/UsageHistory?p=x", api.dt.date(2026, 9, 1), api.dt.date(2026, 10, 20))

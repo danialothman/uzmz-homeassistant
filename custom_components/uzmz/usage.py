@@ -215,14 +215,60 @@ def month_top_ups(state: Optional[dict[str, Any]], today: dt.date) -> dict[str, 
     """This month's top-up count, restarted on the 1st.
 
     `units` is what was bought this month, or None if unknown (UZMZ was set up
-    mid-month and hasn't seen a top-up since).
+    mid-month and hasn't seen a top-up since); `amount` is what was paid, if
+    known exactly (from USMS's top-up history).
     """
     month = today.isoformat()[:7]
     if state is None:
-        return {"month": month, "units": None}
+        return {"month": month, "units": None, "amount": None}
     if state.get("month") != month:
-        return {"month": month, "units": 0.0}
+        return {"month": month, "units": 0.0, "amount": 0.0}
     return state
+
+
+def history_month(history: list[dict[str, Any]], today: dt.date) -> dict[str, Any]:
+    """This month's top-ups, exactly, from USMS's top-up history."""
+    month = today.isoformat()[:7]
+    this_month = [top_up for top_up in history if top_up["time"][:7] == month]
+    return {
+        "month": month,
+        "units": round(sum(top_up["units"] for top_up in this_month), 3),
+        "amount": round(sum(top_up["amount"] for top_up in this_month), 2),
+    }
+
+
+def history_layers(history: list[dict[str, Any]], new_ids: set[str], tariff) -> dict[str, Any]:
+    """Price layers for the top-ups in new_ids, from USMS's top-up history.
+
+    Each is priced by the units bought earlier the same month, so the history
+    must start on the 1st of the oldest new top-up's month.
+    """
+    layers: list[list[float]] = []
+    units = amount = 0.0
+    for top_up in history:
+        if top_up["id"] not in new_ids:
+            continue
+        before = sum(
+            other["units"]
+            for other in history
+            if other["time"][:7] == top_up["time"][:7] and other["time"] < top_up["time"]
+        )
+        layers += tariff_slices(before, top_up["units"], tariff)
+        units += top_up["units"]
+        amount += top_up["recharge"]
+    return {"layers": layers, "units": round(units, 3), "amount": round(amount, 2)}
+
+
+def last_top_up(history: list[dict[str, Any]]) -> dict[str, Any]:
+    """The most recent top-up, for the planner's attributes."""
+    if not history:
+        return {}
+    top_up = history[-1]
+    return {
+        "last_top_up_time": top_up["time"],
+        "last_top_up_amount": top_up["amount"],
+        "last_top_up_units": top_up["units"],
+    }
 
 
 def settle_layers(
@@ -232,11 +278,14 @@ def settle_layers(
     used: float,
     tariff,
     top_ups: dict[str, Any],
+    new_top_ups: Optional[dict[str, Any]] = None,
 ) -> tuple[list[list[float]], dict[str, Any], Optional[float]]:
     """The layers at a new sign-in, from the previous one and usage since.
 
-    Returns the layers, the month's top-ups, and the amount topped up since
-    the previous sign-in (None if there wasn't a top-up).
+    new_top_ups (from history_layers) are the top-ups USMS lists since the
+    previous sign-in; without them a top-up is detected from the jump in
+    units and balance. Returns the layers, the month's top-ups, and the
+    amount topped up since the previous sign-in (None if there wasn't one).
     """
     if not previous:
         return infer_layers(units, balance, tariff), top_ups, None
@@ -245,6 +294,14 @@ def settle_layers(
     if old is None:
         old = infer_layers(previous["units"], previous["balance"], tariff)
 
+    if new_top_ups is not None:
+        # Exact: everything bought is known, so the meter's drop is the usage.
+        credited = new_top_ups["units"]
+        _, layers = use_layers(old, max(0.0, previous["units"] + credited - units))
+        layers = layers + new_top_ups["layers"]
+        topped_up = new_top_ups["amount"] if credited else None
+        return _checked(layers, units, balance, tariff), top_ups, topped_up
+
     cost, layers = use_layers(old, used)
     bought = units - (previous["units"] - used)
     amount = balance - (previous["balance"] - cost)
@@ -252,16 +309,21 @@ def settle_layers(
     if bought >= MIN_TOP_UP_UNITS and amount >= MIN_TOP_UP_AMOUNT:
         before, new = price_top_up(bought, amount, tariff, top_ups.get("units"))
         layers = layers + new
-        top_ups = {**top_ups, "units": round(before + bought, 3)}
+        top_ups = {**top_ups, "units": round(before + bought, 3), "amount": None}
         topped_up = round(amount, 2)
     else:
         # No top-up: the meter's own drop is the most exact usage figure.
         _, layers = use_layers(old, max(0.0, previous["units"] - units))
 
+    return _checked(layers, units, balance, tariff), top_ups, topped_up
+
+
+def _checked(layers: list[list[float]], units: float, balance: float, tariff) -> list[list[float]]:
+    """The layers, or new ones from the balance if they don't match USMS's figures."""
     total = sum(layer_units for layer_units, _ in layers)
     if abs(total - units) > MIN_TOP_UP_UNITS or abs(layers_value(layers) - balance) > LAYERS_TOLERANCE:
-        layers = infer_layers(units, balance, tariff)
-    return layers, top_ups, topped_up
+        return infer_layers(units, balance, tariff)
+    return layers
 
 
 def top_up_plan(top_ups: dict[str, Any], tariff) -> dict[str, Any]:
@@ -271,8 +333,9 @@ def top_up_plan(top_ups: dict[str, Any], tariff) -> dict[str, Any]:
         return {"topped_up_this_month": None, "top_up_price": None, "top_up_left_at_price": None}
     rate = marginal_rate(bought, tariff)
     upper = next((u for u, r in tariff if u is not None and bought < u), None)
+    paid = top_ups.get("amount")
     return {
-        "topped_up_this_month": round(tariff_cost(bought, tariff), 2),
+        "topped_up_this_month": round(paid if paid is not None else tariff_cost(bought, tariff), 2),
         "bought_this_month": round(bought, 3),
         "top_up_price": rate,
         "top_up_left_at_price": round((upper - bought) * rate, 2) if upper is not None else None,
@@ -361,6 +424,7 @@ def make_anchor(
     approximate: bool,
     start: Optional[dt.date] = None,
     layers: Optional[list[list[float]]] = None,
+    signed_in: Optional[str] = None,
 ) -> dict[str, Any]:
     """Anchor a new session's snapshot to the usage reported right now.
 
@@ -380,6 +444,9 @@ def make_anchor(
     }
     if layers is not None:
         anchor["layers"] = layers
+    if signed_in is not None:
+        # When the snapshot was taken, to tell which top-ups it includes.
+        anchor["time"] = signed_in
     if start <= today.replace(day=1):
         anchor["month_to_date"] = round(sum(v for d, v in usage.items() if d[:7] == month), 3)
     return anchor
