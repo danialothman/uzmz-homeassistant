@@ -16,9 +16,25 @@ A Home Assistant custom integration for monitoring prepaid electric and water me
 - 📊 **History**: all sensors are recorded by Home Assistant for graphs and statistics
 - 🔄 **Configurable polling**: default every hour
 
+## Quick start
+
+You need Home Assistant with [HACS](https://hacs.xyz/docs/use/) installed, and your USMS website login.
+
+1. **Install:** click [![Open UZMZ in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danialothman&repository=uzmz-homeassistant&category=integration) → **Add**, then **Download**.
+2. **Restart** Home Assistant (**Settings** → ⋮ → **Restart Home Assistant**).
+3. **Add UZMZ:** click [![Add the UZMZ integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=uzmz)
+4. **Sign in** with your USMS IC number and password, and turn on **Remember password** (see [why](#remember-password)). Type the captcha if USMS shows one.
+5. **Optional:** add the [helper sensors](#helper-sensors-optional) for usage and cost, the [Energy dashboard](#energy-dashboard) and the ready-made [dashboard](#dashboard).
+
+Then see [what to expect on the first day](#what-to-expect-on-the-first-day).
+
 ## Installation
 
 ### HACS (recommended)
+
+[![Open UZMZ in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danialothman&repository=uzmz-homeassistant&category=integration)
+
+The button opens UZMZ in your own Home Assistant's HACS. Or add it by hand:
 
 1. In Home Assistant, open **HACS** → ⋮ → **Custom repositories**.
 2. Add `https://github.com/danialothman/uzmz-homeassistant` with the type **Integration**.
@@ -32,14 +48,32 @@ A Home Assistant custom integration for monitoring prepaid electric and water me
 
 ## Configuration
 
-1. Go to **Settings** → **Devices & Services** → **Add Integration** and search for **UZMZ**.
+[![Add the UZMZ integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=uzmz)
+
+1. Click the button, or go to **Settings** → **Devices & Services** → **Add Integration** and search for **UZMZ**.
 2. Enter your USMS login:
    - **IC Number** and **Password**: the ones you use on the USMS website
-   - **Remember password**: off by default; see [Privacy & security](#privacy--security)
+   - **Remember password**: recommended, see [below](#remember-password); off by default
    - **Base URL**: optional, defaults to `https://www.usms.com.bn/SmartMeter/`
 3. Type the captcha shown in the next step, if USMS shows one.
 
-The integration signs in once and then keeps that session alive. USMS locks an account after 5 failed logins, so UZMZ only submits a login when you do, or once per ended session if you turn on [automatic sign-in](#automatic-sign-in).
+The integration signs in once and then keeps that session alive.
+
+### Remember password
+
+**Turn it on**, unless you'd rather not keep your password in Home Assistant. USMS ends the session by itself about once a day. With **Remember password** on, UZMZ [signs in again by itself](#automatic-sign-in); with it off, you have to sign in again yourself every day or so. It's off by default because the password is then stored in Home Assistant; see [Privacy & security](#privacy--security). You can change it any time under [Options](#options).
+
+### What to expect on the first day
+
+None of these are faults:
+
+- **A captcha** may appear when you sign in. Since October 2026 USMS usually skips it.
+- **The helper counters start at 0** (usage, cost, Energy dashboard) and fill in from then on. They can't show the days before you installed them.
+- **Days left** needs about a day of data.
+- **Water usage arrives about a day late.** USMS posts it the next day, so today's water bar stays empty until then.
+- **Electric hours can arrive late or in bulk.** USMS sometimes posts an hour late, so a bar is low and the next one catches up.
+- **About once a day, one hour shows 0** and the next hour catches up. That's USMS ending the session and UZMZ waiting an hour before [signing in again](#automatic-sign-in).
+- **The balance is an estimate between sign-ins.** It's worked out from your usage and the tariff, and resets to USMS's own figure at every sign-in, so it can shift by a few cents then. USMS locks an account after 5 failed logins, so UZMZ only submits a login when you do, or once per ended session if you turn on [automatic sign-in](#automatic-sign-in).
 
 ### When USMS asks you to sign in again
 
@@ -106,7 +140,7 @@ Things to know:
 
 - Home Assistant stores integration data **unencrypted** on its own disk. Anyone with access to your Home Assistant files, or to an unencrypted Home Assistant backup, can read it. Keep backups private, or turn on backup encryption.
 - Your password, IC number and session cookie are never written to the logs or to notifications. On a failed login only USMS's own error message is logged.
-- UZMZ never logs in by itself. It only submits a login when you do (setup or reauth), so it cannot lock your account. USMS locks accounts after 5 failed logins.
+- UZMZ only submits a login when you do (setup or reauth), or once per ended session with [automatic sign-in](#automatic-sign-in), which stops for good if USMS rejects the saved password. So it can't lock your account: USMS locks accounts after 5 failed logins.
 - Between sign-ins UZMZ only reads two pages: your meter page every polling interval, plus a light keep-alive every 5 minutes so the session doesn't time out.
 - Removing the integration deletes everything it stored.
 
