@@ -202,7 +202,7 @@ On a prepaid meter you pay when you **top up**, not when you use the units. The 
 | first 54.54 m³ (the first B$6) | B$0.11/m³ |
 | above 54.54 m³ | B$0.44/m³ |
 
-For example, a B$30 water top-up early in the month buys 54.54 m³ at B$0.11 and then 54.5 m³ at B$0.44. Topping up B$6 a month instead keeps all your water at B$0.11. The water band is per unit in the building, so UZMZ assumes a house (one unit).
+For example, a month's first water top-up of B$30 buys 54.54 m³ at B$0.11 and then 54.5 m³ at B$0.44. Topping up B$6 a month instead keeps all your water at B$0.11. The date in the month doesn't matter, only how much you've already topped up that month: a first top-up on the 25th gets the same prices as one on the 1st. Timing only matters near the end of a month in which you've already topped up, when waiting until the 1st gets the new month's cheaper prices. The water band is per unit in the building, so UZMZ assumes a house (one unit).
 
 Your balance is what your remaining units cost, and USMS uses the oldest units first. UZMZ follows this:
 
