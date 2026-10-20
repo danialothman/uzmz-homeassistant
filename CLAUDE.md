@@ -43,6 +43,7 @@ tests/               - pytest suite for api.py (no HA needed)
 - Scan interval configurable via options flow (300-86400 seconds, default 1 hour)
 - Unique ID per config entry is the IC number
 - Scope (v1.7.2): one USMS account per HA and one electric + one water meter per account, the only setup that's been tested. Sensor unique IDs and device identifiers aren't per entry (e.g. `uzmz_electric_remaining_unit`), so the config flow aborts a second account (`single_account`) instead of letting its sensors silently clash. Extra meters of a type are ignored (the first card is kept); `USMSClient.meter_counts` counts them and the coordinator shows a once-per-start `uzmz_unsupported_meters` notification. Multi-account support would need per-entry unique IDs with an entity-registry migration that keeps the existing entity IDs. Multi-meter needs a real (redacted) page from such an account first.
+- Every request sends `const.USER_AGENT` (`UZMZ/<VERSION> (Home Assistant integration; +<repo URL>)`, v1.7.3), so USMS can see what the traffic is and who to contact. `const.VERSION` must match `manifest.json` (a test checks); bump both on release. Verified 2026-10-20: USMS serves the same login page to it as to the old `python-requests` default.
 - Runtime dependency: `beautifulsoup4>=4.12.3`
 - No explicit HA version constraint, but tested with HA 2026.2
 
