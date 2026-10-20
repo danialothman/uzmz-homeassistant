@@ -116,8 +116,8 @@ def _month(days: dict[int, float], month: int = 10) -> dict[str, float]:
     return {f"2026-{month:02d}-{d:02d}": v for d, v in days.items()}
 
 
-def test_tariff_balance_matches_a_fresh_login():
-    # 00:16 sign-in: 224.17 BND, about 1,000 kWh into October (0.08 band).
+def test_balance_follows_the_top_up_prices():
+    # 00:16 sign-in: 224.17 BND for 2,472 kWh, so the oldest units cost 0.08.
     before = _month({1: 100.0, 2: 100.0, 3: 100.0, 4: 100.0, 5: 100.0, 6: 100.0,
                      7: 108.573, 8: 105.547, 9: 96.426, 10: 0.0})
     anchor = usage.make_anchor(2472.175, 224.17, TODAY, before, False, start=dt.date(2026, 10, 1))
@@ -127,27 +127,43 @@ def test_tariff_balance_matches_a_fresh_login():
     current = usage.current_readings(anchor, now, start, rate=None, tariff=usage.ELECTRIC_TARIFF)
 
     assert current["remaining_balance"] == 221.21  # what the 11:01 sign-in showed
-    assert current["balance_method"] == "tariff"
+    assert current["balance_method"] == "top-up prices"
     assert current["rate"] == 0.08
     assert current["month_to_date"] == 947.536
 
 
-def test_tariff_charges_each_band_when_crossing_2000():
-    before = _month({1: 1990.0, 10: 0.0})
-    anchor = usage.make_anchor(1000.0, 100.0, TODAY, before, False, start=dt.date(2026, 10, 1))
-    start, _ = usage.window_start(anchor, TODAY)
+def test_units_are_used_oldest_first():
+    # Real readings: 18 Oct 00:53 sign-in 1578.857 kWh / 152.70 BND, about
+    # 259 kWh of them bought at 0.08 and the rest at 0.10. The next sign-in
+    # (19 Oct 05:50) showed 141.24 after 143.307 kWh: all still at 0.08.
+    signed_in = dt.date(2026, 10, 18)
+    before = _month({1: 1881.042, 18: 0.0})
+    anchor = usage.make_anchor(1578.857, 152.70, signed_in, before, False, start=dt.date(2026, 10, 1))
+    start, _ = usage.window_start(anchor, dt.date(2026, 10, 19))
 
     current = usage.current_readings(
-        anchor, {**before, "2026-10-10": 20.0}, start, rate=None, tariff=usage.ELECTRIC_TARIFF
+        anchor, {**before, "2026-10-18": 118.168, "2026-10-19": 25.139}, start,
+        rate=None, tariff=usage.ELECTRIC_TARIFF,
     )
 
-    assert current["remaining_balance"] == 98.2  # 10 kWh at 0.08 + 10 kWh at 0.10
-    assert current["rate"] == 0.10
+    assert current["remaining_balance"] == 141.24
+    assert current["rate"] == 0.08
+    assert current["price_layers"] == [[115.978, 0.08], [1319.572, 0.1]]
+
+    # Another 131.6 kWh uses the last 116 kWh at 0.08, then 0.10: what the
+    # 20 Oct 10:50 sign-in showed.
+    later = usage.current_readings(
+        anchor, {**before, "2026-10-18": 118.168, "2026-10-19": 156.739}, start,
+        rate=None, tariff=usage.ELECTRIC_TARIFF,
+    )
+    assert later["remaining_balance"] == 130.39
+    assert later["rate"] == 0.1
 
 
-def test_tariff_restarts_on_the_first_of_the_month():
+def test_prices_dont_restart_on_the_first_of_the_month():
+    # Units bought in October still cost what they cost in November.
     signed_in = dt.date(2026, 10, 30)
-    before = _month({1: 1890.0, 30: 60.0})  # 1,950 kWh so far in October
+    before = _month({1: 1890.0, 30: 60.0})
     anchor = usage.make_anchor(1000.0, 100.0, signed_in, before, False, start=dt.date(2026, 10, 1))
     later = dt.date(2026, 11, 1)
     start, trimmed = usage.window_start(anchor, later)
@@ -156,12 +172,10 @@ def test_tariff_restarts_on_the_first_of_the_month():
     current = usage.current_readings(anchor, now, start, rate=None, tariff=usage.ELECTRIC_TARIFF)
 
     assert not trimmed
-    # October: 1,950 -> 2,010 is 50 at 0.08 + 10 at 0.10 = 5.00.
-    # November: 0 -> 100 at 0.01 = 1.00.
-    assert current["remaining_balance"] == 94.0
     assert current["used_since_sign_in"] == 160.0
+    assert current["remaining_balance"] == 84.0  # 160 kWh at 0.10
     assert current["month_to_date"] == 100.0
-    assert current["rate"] == 0.01
+    assert current["rate"] == 0.1
 
 
 def test_older_anchor_counts_only_days_it_covered():
@@ -178,7 +192,115 @@ def test_older_anchor_counts_only_days_it_covered():
 
     assert current["used_since_sign_in"] == 5.0
     assert current["month_to_date"] == 1835.0
-    assert current["remaining_balance"] == 99.6  # 5 kWh at 0.08
+    assert current["remaining_balance"] == 99.5  # 5 kWh at 0.10 (100 BND / 1000 kWh)
+
+
+# ----- top-ups -----
+
+OCTOBER = {"month": "2026-10", "units": 0.0}
+
+
+def test_layers_are_inferred_from_the_balance():
+    assert usage.infer_layers(1578.857, 152.70, usage.ELECTRIC_TARIFF) == [[259.285, 0.08], [1319.572, 0.1]]
+    assert usage.infer_layers(1000.0, 100.0, usage.ELECTRIC_TARIFF) == [[1000.0, 0.1]]
+    # Water after the 10 Oct top-up: about 69 m3 at 0.11, then 54.5 at 0.44.
+    assert usage.infer_layers(123.58, 31.59, usage.WATER_TARIFF) == [[69.046, 0.11], [54.534, 0.44]]
+    # Below the cheapest band (other charges): one layer at the ratio.
+    assert usage.infer_layers(27.667, 3.04, usage.WATER_TARIFF) == [[27.667, 0.10988]]
+    assert usage.infer_layers(0.0, 0.0, usage.ELECTRIC_TARIFF) == []
+
+
+def test_electric_top_up_is_priced_by_the_month_so_far():
+    # Real: 1 Oct, B$249.61 bought 3316.13 kWh (600 at 0.01, 1400 at 0.08, the rest at 0.10).
+    previous = {"units": 105.658, "balance": 10.56, "layers": [[105.658, 0.1]]}
+
+    layers, top_ups, amount = usage.settle_layers(
+        previous, 3421.788, 260.17, 0.0, usage.ELECTRIC_TARIFF, OCTOBER
+    )
+
+    assert amount == 249.61
+    assert layers == [[105.658, 0.1], [600.0, 0.01], [1400, 0.08], [1316.13, 0.1]]
+    assert top_ups == {"month": "2026-10", "units": 3316.13}
+    assert usage.top_up_plan(top_ups, usage.ELECTRIC_TARIFF) == {
+        "topped_up_this_month": 249.61,
+        "bought_this_month": 3316.13,
+        "top_up_price": 0.1,
+        "top_up_left_at_price": 68.39,  # up to 4,000 kWh
+    }
+
+
+def test_water_top_up_past_the_first_band_costs_0_44():
+    # Real: 10 Oct, B$30 bought 109.087 m3 (54.54 at 0.11, 54.547 at 0.44).
+    previous = {"units": 27.667, "balance": 3.04, "layers": [[27.667, 0.10988]]}
+
+    layers, top_ups, amount = usage.settle_layers(
+        previous, 136.754, 33.04, 0.0, usage.WATER_TARIFF, OCTOBER
+    )
+
+    assert amount == 30.0
+    assert layers[1:] == [[54.54, 0.11], [54.547, 0.44]]
+    plan = usage.top_up_plan(top_ups, usage.WATER_TARIFF)
+    assert plan["top_up_price"] == 0.44
+    assert plan["top_up_left_at_price"] is None  # the last band
+
+
+def test_usage_between_sign_ins_comes_off_the_front():
+    previous = {"units": 1578.857, "balance": 152.70, "layers": [[259.285, 0.08], [1319.572, 0.1]]}
+
+    layers, top_ups, amount = usage.settle_layers(
+        previous, 1435.55, 141.24, 143.0, usage.ELECTRIC_TARIFF, OCTOBER
+    )
+
+    assert amount is None
+    assert top_ups == OCTOBER
+    # The meter's own drop (143.307) is used, not the reports' 143.0.
+    assert layers == [[115.978, 0.08], [1319.572, 0.1]]
+
+
+def test_layers_that_dont_match_the_balance_are_inferred_again():
+    previous = {"units": 1000.0, "balance": 100.0, "layers": [[1000.0, 0.1]]}
+
+    layers, _, _ = usage.settle_layers(previous, 900.0, 80.0, 100.0, usage.ELECTRIC_TARIFF, OCTOBER)
+
+    assert layers == usage.infer_layers(900.0, 80.0, usage.ELECTRIC_TARIFF)
+
+
+def test_anchor_from_before_1_8_still_sees_a_top_up():
+    previous = {"units": 105.658, "balance": 10.56}
+
+    _, top_ups, amount = usage.settle_layers(
+        previous, 3421.788, 260.17, 0.0, usage.ELECTRIC_TARIFF, OCTOBER
+    )
+
+    assert amount == 249.61
+    assert top_ups["units"] == 3316.13
+
+
+def test_earlier_top_ups_are_worked_out_from_the_price():
+    # B$20 for 250 kWh: only possible at 0.08, so at least 600 kWh were bought before.
+    before, layers = usage.price_top_up(250.0, 20.0, usage.ELECTRIC_TARIFF, None)
+    assert 599 < before <= 600
+    assert sum(u for u, r in layers if r == 0.08) > 249
+    # A known count that explains the price is kept ("B$20 after B$30 earlier").
+    assert usage.price_top_up(250.0, 20.0, usage.ELECTRIC_TARIFF, 900.0) == (900.0, [[250.0, 0.08]])
+    # A first top-up of the month starts at the cheapest band.
+    assert usage.price_top_up(775.0, 20.0, usage.ELECTRIC_TARIFF, None)[0] == 0.0
+
+
+def test_month_top_ups_restart_on_the_first():
+    assert usage.month_top_ups(None, TODAY) == {"month": "2026-10", "units": None}
+    assert usage.month_top_ups({"month": "2026-10", "units": 50.0}, TODAY) == {"month": "2026-10", "units": 50.0}
+    assert usage.month_top_ups({"month": "2026-10", "units": 50.0}, dt.date(2026, 11, 1)) == {
+        "month": "2026-11", "units": 0.0,
+    }
+
+
+def test_top_up_plan_unknown_until_a_top_up_or_the_1st():
+    plan = usage.top_up_plan({"month": "2026-10", "units": None}, usage.ELECTRIC_TARIFF)
+    assert plan == {"topped_up_this_month": None, "top_up_price": None, "top_up_left_at_price": None}
+    fresh = usage.top_up_plan({"month": "2026-11", "units": 0.0}, usage.ELECTRIC_TARIFF)
+    assert fresh["top_up_price"] == 0.01
+    assert fresh["top_up_left_at_price"] == 6.0  # 600 kWh at 0.01
 
 
 def test_new_session_window_reaches_the_first_of_the_month():
@@ -196,22 +318,18 @@ def test_water_tariff_bands():
     assert usage.marginal_rate(60, usage.WATER_TARIFF) == 0.44
 
 
-def test_water_matches_the_snapshot_ratio():
-    # 3.04 BND for 27.667 m3 is the first-band rate.
-    assert round(3.04 / 27.667, 2) == usage.WATER_TARIFF[0][1]
-
-
-def test_water_balance_crossing_the_first_band():
-    # 50 m3 so far this month, then 10 m3 more, posted a day late.
-    before = _month({1: 50.0})
-    anchor = usage.make_anchor(27.667, 3.04, TODAY, before, False, start=dt.date(2026, 10, 1))
+def test_water_large_top_up_costs_more_once_cheap_units_run_out():
+    # Real 20 Oct: 123.58 m3 for 31.59 BND, 69 m3 at 0.11 then 54.5 at 0.44.
+    before = _month({1: 20.0})
+    anchor = usage.make_anchor(123.58, 31.59, TODAY, before, False, start=dt.date(2026, 10, 1))
     start, _ = usage.window_start(anchor, TODAY)
-    now = {**before, "2026-10-09": 10.0}
 
-    current = usage.current_readings(anchor, now, start, rate=None, tariff=usage.WATER_TARIFF)
+    current = usage.current_readings(
+        anchor, {**before, "2026-10-09": 70.0}, start, rate=None, tariff=usage.WATER_TARIFF
+    )
 
-    # 4.54 m3 at 0.11 + 5.46 m3 at 0.44 = 2.9018
-    assert current["remaining_balance"] == 0.14
+    # 69.046 m3 at 0.11 + 0.954 m3 at 0.44 = 8.015
+    assert current["remaining_balance"] == 23.58
     assert current["rate"] == 0.44
 
 

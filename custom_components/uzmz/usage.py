@@ -12,11 +12,22 @@ the usage the reports showed at that moment. Later,
 Comparing what the reports show (rather than counting hours from the login
 time) also handles data USMS posts late, like water's daily figures.
 
-Electricity and water are charged with their published domestic tariffs,
-which are tiered by monthly consumption, so each unit is costed in the band
-it falls in (using the month-to-date total from the reports). Without a
-tariff, a rate learned from the change between two login snapshots is used,
-and until two are available the snapshot's own balance-per-unit ratio.
+Prepaid meters are priced at top-up time, not when units are used: the
+published tariff bands apply to the units bought in a calendar month
+("tiered rates restart each month; top-ups earlier in the month use up the
+cheaper blocks first"), and the balance is what the remaining units cost.
+Units are used oldest first. So for electricity and water UZMZ keeps the
+remaining units as priced layers (oldest first), checked against USMS's own
+balance at every sign-in:
+
+- a top-up (units and balance up by more than usage explains) adds layers,
+  priced by the units already bought that month;
+- usage takes units off the front, and costs what they cost;
+- the first time, or if the layers no longer match USMS's balance, they're
+  inferred from the balance-per-unit ratio as two adjacent bands.
+
+Without a tariff, a rate learned from the change between two login
+snapshots is used, and until two are available the snapshot's own ratio.
 """
 
 from __future__ import annotations
@@ -30,6 +41,13 @@ LOOKBACK_DAYS = 3
 MAX_REPORT_DAYS = 30
 # Ignore rate samples over tiny unit changes.
 MIN_UNITS_FOR_RATE = 1.0
+# Smallest rise in units and balance (beyond what usage explains) treated as
+# a top-up. USMS's smallest top-ups are a few dollars, so far above this.
+MIN_TOP_UP_UNITS = 1.0
+MIN_TOP_UP_AMOUNT = 1.0
+# How far the layers' value may drift from USMS's balance before they're
+# inferred again (rounding to cents and late usage reports cause a little).
+LAYERS_TOLERANCE = 0.2
 
 # DES Tariff A (residential), B$ per kWh by monthly consumption, since
 # 2012-01-01: https://www.des.gov.bn/electricity-tariff/
@@ -105,6 +123,162 @@ def marginal_rate(kwh: float, tariff=ELECTRIC_TARIFF) -> float:
     return tariff[-1][1]
 
 
+def tariff_slices(before: float, units: float, tariff) -> list[list[float]]:
+    """Price layers for units bought after `before` units this month."""
+    layers, lower, end = [], 0.0, before + units
+    for upper, rate in tariff:
+        top = end if upper is None else min(upper, end)
+        part = top - max(before, lower)
+        if part > 1e-9:
+            layers.append([round(part, 3), rate])
+        if upper is None or upper >= end:
+            break
+        lower = upper
+    return layers
+
+
+def layers_value(layers: list[list[float]]) -> float:
+    """What the remaining units cost (USMS's balance, if the layers are right)."""
+    return sum(units * rate for units, rate in layers)
+
+
+def use_layers(layers: list[list[float]], used: float) -> tuple[float, list[list[float]]]:
+    """Take used units off the front: their cost, and the layers left.
+
+    Using more than the layers hold costs the rest at the last layer's rate
+    (the meter can't actually go below 0).
+    """
+    cost, left, rest = 0.0, max(0.0, used), []
+    for units, rate in layers:
+        take = min(units, left)
+        cost += take * rate
+        left -= take
+        if units - take > 1e-9:
+            rest.append([round(units - take, 3), rate])
+    if left > 1e-9 and layers:
+        cost += left * layers[-1][1]
+    return cost, rest
+
+
+def infer_layers(units: float, balance: float, tariff) -> list[list[float]]:
+    """Best guess at the layers from the units and balance alone.
+
+    The balance-per-unit ratio lies between two adjacent band rates, which
+    gives how many units are at each (cheaper ones first, as within a month's
+    top-ups). Outside the band rates, one layer at the ratio.
+    """
+    if units <= 0:
+        return []
+    ratio = balance / units
+    rates = sorted({rate for _, rate in tariff})
+    for low, high in zip(rates, rates[1:]):
+        if low <= ratio <= high:
+            at_low = min(units, max(0.0, (high * units - balance) / (high - low)))
+            layers = [[round(at_low, 3), low], [round(units - at_low, 3), high]]
+            return [layer for layer in layers if layer[0] > 0]
+    return [[round(units, 3), round(ratio, 5)]]
+
+
+def price_top_up(
+    bought: float, amount: float, tariff, known_before: Optional[float]
+) -> tuple[float, list[list[float]]]:
+    """Units already bought this month before a top-up, and its layers.
+
+    The known count is used if it explains the amount paid; otherwise (UZMZ
+    missed an earlier top-up, or this one was made last month) it's worked
+    out from the amount, as the fewest units before that make it cost that.
+    """
+
+    def cost(before: float) -> float:
+        return tariff_cost(before + bought, tariff) - tariff_cost(before, tariff)
+
+    # The amount is measured to a few cents (rounding, late usage reports).
+    if known_before is not None and abs(cost(known_before) - amount) <= max(0.05, 0.01 * amount):
+        before = known_before
+    elif cost(0.0) >= amount - 0.05:
+        before = 0.0
+    else:
+        # Cost only grows with the units before, so bisect up to the last band.
+        low, high = 0.0, max(upper for upper, _ in tariff if upper is not None)
+        if cost(high) >= amount - 0.05:
+            for _ in range(60):
+                mid = (low + high) / 2
+                if cost(mid) >= amount - 0.05:
+                    high = mid
+                else:
+                    low = mid
+        before = round(high, 3)
+    return before, tariff_slices(before, bought, tariff)
+
+
+def month_top_ups(state: Optional[dict[str, Any]], today: dt.date) -> dict[str, Any]:
+    """This month's top-up count, restarted on the 1st.
+
+    `units` is what was bought this month, or None if unknown (UZMZ was set up
+    mid-month and hasn't seen a top-up since).
+    """
+    month = today.isoformat()[:7]
+    if state is None:
+        return {"month": month, "units": None}
+    if state.get("month") != month:
+        return {"month": month, "units": 0.0}
+    return state
+
+
+def settle_layers(
+    previous: Optional[dict[str, Any]],
+    units: float,
+    balance: float,
+    used: float,
+    tariff,
+    top_ups: dict[str, Any],
+) -> tuple[list[list[float]], dict[str, Any], Optional[float]]:
+    """The layers at a new sign-in, from the previous one and usage since.
+
+    Returns the layers, the month's top-ups, and the amount topped up since
+    the previous sign-in (None if there wasn't a top-up).
+    """
+    if not previous:
+        return infer_layers(units, balance, tariff), top_ups, None
+    # Anchors from before 1.8.0 have no layers yet.
+    old = previous.get("layers")
+    if old is None:
+        old = infer_layers(previous["units"], previous["balance"], tariff)
+
+    cost, layers = use_layers(old, used)
+    bought = units - (previous["units"] - used)
+    amount = balance - (previous["balance"] - cost)
+    topped_up = None
+    if bought >= MIN_TOP_UP_UNITS and amount >= MIN_TOP_UP_AMOUNT:
+        before, new = price_top_up(bought, amount, tariff, top_ups.get("units"))
+        layers = layers + new
+        top_ups = {**top_ups, "units": round(before + bought, 3)}
+        topped_up = round(amount, 2)
+    else:
+        # No top-up: the meter's own drop is the most exact usage figure.
+        _, layers = use_layers(old, max(0.0, previous["units"] - units))
+
+    total = sum(layer_units for layer_units, _ in layers)
+    if abs(total - units) > MIN_TOP_UP_UNITS or abs(layers_value(layers) - balance) > LAYERS_TOLERANCE:
+        layers = infer_layers(units, balance, tariff)
+    return layers, top_ups, topped_up
+
+
+def top_up_plan(top_ups: dict[str, Any], tariff) -> dict[str, Any]:
+    """What a top-up buys now: this month's spend, its price and room in the band."""
+    bought = top_ups.get("units")
+    if bought is None:
+        return {"topped_up_this_month": None, "top_up_price": None, "top_up_left_at_price": None}
+    rate = marginal_rate(bought, tariff)
+    upper = next((u for u, r in tariff if u is not None and bought < u), None)
+    return {
+        "topped_up_this_month": round(tariff_cost(bought, tariff), 2),
+        "bought_this_month": round(bought, 3),
+        "top_up_price": rate,
+        "top_up_left_at_price": round((upper - bought) * rate, 2) if upper is not None else None,
+    }
+
+
 def make_anchor(
     units: float,
     balance: float,
@@ -112,6 +286,7 @@ def make_anchor(
     usage: dict[str, float],
     approximate: bool,
     start: Optional[dt.date] = None,
+    layers: Optional[list[list[float]]] = None,
 ) -> dict[str, Any]:
     """Anchor a new session's snapshot to the usage reported right now.
 
@@ -129,6 +304,8 @@ def make_anchor(
         "usage": usage,
         "approximate": approximate,
     }
+    if layers is not None:
+        anchor["layers"] = layers
     if start <= today.replace(day=1):
         anchor["month_to_date"] = round(sum(v for d, v in usage.items() if d[:7] == month), 3)
     return anchor
@@ -156,8 +333,9 @@ def current_readings(
 ) -> dict[str, Any]:
     """Remaining units and estimated balance from the anchor and live usage.
 
-    With a tariff, the balance is charged band by band from each month's
-    month-to-date total; otherwise at a flat rate (learned, or the average).
+    With a tariff, the units used come off the anchor's price layers (see
+    the module docstring); otherwise they're charged at a flat rate (learned,
+    or the average).
     """
     since = max(start, _anchor_from(anchor)).isoformat()
     # Usage that appeared in the reports since sign-in, day by day.
@@ -174,29 +352,20 @@ def current_readings(
     }
 
     if tariff:
-        spent, latest_month_total = 0.0, 0.0
-        anchor_month = anchor["date"][:7]
-        for month in sorted({day[:7] for day, d in delta.items() if d}):
-            month_used = sum(d for day, d in delta.items() if day[:7] == month)
-            if month == anchor_month and "month_to_date" in anchor:
-                before = anchor["month_to_date"]
-            else:
-                # Later months start after sign-in; older anchors need the
-                # reports from the 1st (see window_start).
-                before = sum(v for day, v in usage_now.items() if day[:7] == month) - month_used
-            spent += tariff_cost(before + month_used, tariff) - tariff_cost(before, tariff)
-            latest_month_total = before + month_used
-        if not any(delta.values()):
-            latest_month_total = anchor.get("month_to_date") or sum(
-                v for day, v in usage_now.items() if day[:7] == max(usage_now, default="")[:7]
-            )
+        layers = anchor.get("layers")
+        if layers is None:
+            layers = infer_layers(anchor["units"], anchor["balance"], tariff)
+        spent, rest = use_layers(layers, used)
+        rate = rest[0][1] if rest else (layers[-1][1] if layers else 0.0)
         result.update(
             {
                 "remaining_balance": round(max(0.0, anchor["balance"] - spent), 2),
-                "rate": marginal_rate(latest_month_total, tariff),
+                # What the units being used now cost.
+                "rate": rate,
                 "rate_is_average": False,
-                "balance_method": "tariff",
-                "month_to_date": round(latest_month_total, 3),
+                "balance_method": "top-up prices",
+                "price_layers": rest,
+                "month_to_date": _month_to_date(anchor, delta, usage_now),
             }
         )
         return result
@@ -215,6 +384,15 @@ def current_readings(
     return result
 
 
+def _month_to_date(anchor: dict[str, Any], delta: dict[str, float], usage_now: dict[str, float]) -> float:
+    """This month's usage so far (for information; prices follow top-ups)."""
+    month = max([day for day, d in delta.items() if d] or [anchor["date"]])[:7]
+    month_used = sum(d for day, d in delta.items() if day[:7] == month)
+    if month == anchor["date"][:7] and "month_to_date" in anchor:
+        return round(anchor["month_to_date"] + month_used, 3)
+    return round(sum(v for day, v in usage_now.items() if day[:7] == month), 3)
+
+
 # Readings worked out from the reports, which the login snapshot can't give.
 ESTIMATE_KEYS = (
     "remaining_unit",
@@ -226,6 +404,7 @@ ESTIMATE_KEYS = (
     "rate",
     "rate_is_average",
     "balance_method",
+    "price_layers",
     "month_to_date",
     "approximate",
     "usage_updated",

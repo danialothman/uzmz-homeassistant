@@ -128,7 +128,7 @@ template:
             {{ units if units is not none else this.attributes.get('last_units') }}
 
   # Money spent, for the Energy dashboard: add up each balance drop and
-  # ignore top-ups. Between sign-ins it follows UZMZ's tariff-based
+  # ignore top-ups. Between sign-ins it follows UZMZ's top-up-price
   # balance estimate; each sign-in brings the exact balance back.
   - triggers:
       - trigger: state
