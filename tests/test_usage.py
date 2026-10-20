@@ -413,3 +413,58 @@ def test_last_posted_unknown_without_usage():
     now = dt.datetime(2026, 10, 12, 20, 30, tzinfo=BRUNEI)
     assert usage.last_posted({"2026-10-12": 0.0}, now) is None
     assert usage.last_posted({}, now) is None
+
+
+# ----- top-up advice -----
+
+
+def test_advice_before_the_month_is_known():
+    advice = usage.top_up_advice({"month": "2026-10", "units": None}, usage.WATER_TARIFF, "m³")
+    assert advice.startswith("Prices restart each month: the first B$6.00 buys 54.54 m³ at B$0.11/m³.")
+
+
+def test_advice_at_the_start_of_the_month():
+    assert usage.top_up_advice({"month": "2026-11", "units": 0.0}, usage.WATER_TARIFF, "m³") == (
+        "Up to B$6.00 more this month buys 54.54 m³ at B$0.11/m³; above that, B$0.44/m³. "
+        "Prices restart on the 1st."
+    )
+    assert usage.top_up_advice({"month": "2026-11", "units": 0.0}, usage.ELECTRIC_TARIFF, "kWh") == (
+        "Up to B$6.00 more this month buys 600 kWh at B$0.01/kWh; above that, B$0.08/kWh. "
+        "Prices restart on the 1st."
+    )
+
+
+def test_advice_in_the_last_band():
+    advice = usage.top_up_advice({"month": "2026-10", "units": 109.087}, usage.WATER_TARIFF, "m³")
+    assert advice == "This month's top-ups now buy at B$0.44/m³, the highest price. Prices restart on the 1st."
+
+
+def test_average_daily_use_skips_today_and_unposted_days():
+    usage_now = {"2026-10-17": 1.493, "2026-10-18": 1.68, "2026-10-19": 0.0, "2026-10-20": 0.0}
+    assert usage.average_daily_use(usage_now, dt.date(2026, 10, 20)) == 1.587
+    assert usage.average_daily_use({"2026-10-20": 5.0}, dt.date(2026, 10, 20)) is None
+
+
+def test_cheap_water_runs_out_in_december():
+    # Real 20 Oct: 69 m3 at 0.11, then 54.5 m3 at 0.44, about 1.5 m3 a day.
+    change = usage.next_price_change([[69.046, 0.11], [54.534, 0.44]], 1.5, dt.date(2026, 10, 20))
+    assert change == {
+        "price_change": "2026-12-05",
+        "price_now": 0.11,
+        "next_price": 0.44,
+        "units_at_price_now": 69.046,
+        "daily_use": 1.5,
+    }
+
+
+def test_no_price_change_when_everything_left_costs_the_same():
+    change = usage.next_price_change([[0.24, 0.08], [1303.708, 0.1]][1:], 110.0, dt.date(2026, 10, 20))
+    assert change["price_change"] is None
+    assert change["next_price"] is None
+    assert change["units_at_price_now"] == 1303.708
+
+
+def test_prices_a_fraction_off_a_band_count_as_that_band():
+    change = usage.next_price_change([[27.667, 0.10988], [54.54, 0.11], [54.547, 0.44]], 1.5, dt.date(2026, 10, 10))
+    assert change["units_at_price_now"] == 82.207
+    assert change["next_price"] == 0.44

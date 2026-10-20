@@ -39,6 +39,7 @@ from .const import (
 from .usage import (
     ELECTRIC_TARIFF,
     WATER_TARIFF,
+    average_daily_use,
     current_readings,
     infer_layers,
     last_estimate,
@@ -47,9 +48,11 @@ from .usage import (
     make_anchor,
     month_top_ups,
     new_session_start,
+    next_price_change,
     parse_number,
     recent_usage,
     settle_layers,
+    top_up_advice,
     top_up_plan,
     usage_changed,
     window_start,
@@ -194,9 +197,11 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             anchor = anchors.get(meter)
             # Both have published tariffs, applied to each month's top-ups.
             tariff = {"electric": ELECTRIC_TARIFF, "water": WATER_TARIFF}.get(meter)
+            unit = "kWh" if meter == "electric" else "m³"
             if tariff:
                 top_ups[meter] = month_top_ups(top_ups.get(meter), today)
                 readings.update(top_up_plan(top_ups[meter], tariff))
+                readings["top_up_advice"] = top_up_advice(top_ups[meter], tariff, unit)
             # USMS only changes the Home snapshot at login, so a changed
             # snapshot without a flow login means a session we didn't see start.
             snapshot_changed = bool(anchor) and (
@@ -246,6 +251,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                     if topped_up is not None:
                         _LOGGER.info("USMS %s top-up of B$%.2f seen at sign-in", meter, topped_up)
                     readings.update(top_up_plan(top_ups[meter], tariff))
+                    readings["top_up_advice"] = top_up_advice(top_ups[meter], tariff, unit)
                 anchor = make_anchor(
                     units, balance, today, usage_now,
                     approximate=(legacy or snapshot_changed) and not fresh,
@@ -260,6 +266,12 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
 
             current = current_readings(anchor, usage_now, start, rates.get(meter), tariff)
             readings.update(current)
+            if tariff:
+                readings.update(
+                    next_price_change(
+                        current["price_layers"], average_daily_use(usage_now, today), today
+                    )
+                )
             readings.update(
                 {
                     "live": True,

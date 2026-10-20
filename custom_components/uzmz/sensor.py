@@ -1,7 +1,7 @@
 """Sensor platform for UZMZ integration."""
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
@@ -20,8 +20,10 @@ from .const import (
     DOMAIN,
     ICON_ELECTRIC,
     ICON_WATER,
+    ICON_ADVICE,
     ICON_CURRENCY,
     ICON_PRICE,
+    ICON_PRICE_CHANGE,
     ICON_STATUS,
     ICON_TOP_UP,
     ICON_UPDATE,
@@ -131,6 +133,26 @@ async def async_setup_entry(
             SensorDeviceClass.MONETARY,
             None,
         ),
+        UZMZSensor(
+            coordinator,
+            "electric",
+            "top_up_advice",
+            "Electric Top-up Advice",
+            None,
+            ICON_ADVICE,
+            None,
+            None,
+        ),
+        UZMZSensor(
+            coordinator,
+            "electric",
+            "price_change",
+            "Electric Next Price Change",
+            None,
+            ICON_PRICE_CHANGE,
+            SensorDeviceClass.DATE,
+            None,
+        ),
     ])
     
     # Water meter sensors
@@ -216,6 +238,26 @@ async def async_setup_entry(
             SensorDeviceClass.MONETARY,
             None,
         ),
+        UZMZSensor(
+            coordinator,
+            "water",
+            "top_up_advice",
+            "Water Top-up Advice",
+            None,
+            ICON_ADVICE,
+            None,
+            None,
+        ),
+        UZMZSensor(
+            coordinator,
+            "water",
+            "price_change",
+            "Water Next Price Change",
+            None,
+            ICON_PRICE_CHANGE,
+            SensorDeviceClass.DATE,
+            None,
+        ),
     ])
 
     # Integration-status sensors (track the integration's own polling, distinct
@@ -283,6 +325,10 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
                     return 0.0
             return 0.0
 
+        # When the units in use now run out (ISO date)
+        if self._sensor_type == "price_change":
+            return date.fromisoformat(value) if value else None
+
         # When UZMZ last saw USMS post new usage (ISO timestamp)
         if self._sensor_type == "usage_updated":
             return datetime.fromisoformat(value) if value else None
@@ -349,6 +395,10 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
             "rate_is_average",
             "balance_method",
             "price_layers",
+            "price_now",
+            "next_price",
+            "units_at_price_now",
+            "daily_use",
             "month_to_date",
             "bought_this_month",
             "approximate",

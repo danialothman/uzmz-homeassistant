@@ -140,12 +140,15 @@ views:
       - entity: sensor.uzmz_electric_meter_electric_usage_updated
         name: USMS last posted usage
         format: relative
-      - entity: sensor.uzmz_electric_meter_electric_topped_up_this_month
-        name: Topped up this month
-      - entity: sensor.uzmz_electric_meter_electric_top_up_price
-        name: Next top-up buys at
-      - entity: sensor.uzmz_electric_meter_electric_top_up_left_at_this_price
-        name: Top-up left at that price
+    - type: markdown
+      content: >-
+        {%- set change = 'sensor.uzmz_electric_meter_electric_next_price_change' -%}
+        💡 {{ states('sensor.uzmz_electric_meter_electric_top_up_advice') }}
+        {%- if states(change) not in ['unknown', 'unavailable'] %}
+
+        📅 Your B${{ '%.2f' % state_attr(change, 'price_now') }} units run out around
+        {{ as_datetime(states(change)).strftime('%-d %b') }}, then B${{ '%.2f' % state_attr(change, 'next_price') }}/kWh.
+        {%- endif %}
   - type: grid
     cards:
     - type: heading
@@ -195,12 +198,15 @@ views:
       - entity: sensor.uzmz_water_meter_water_usage_updated
         name: USMS last posted usage
         format: relative
-      - entity: sensor.uzmz_water_meter_water_topped_up_this_month
-        name: Topped up this month
-      - entity: sensor.uzmz_water_meter_water_top_up_price
-        name: Next top-up buys at
-      - entity: sensor.uzmz_water_meter_water_top_up_left_at_this_price
-        name: Top-up left at that price
+    - type: markdown
+      content: >-
+        {%- set change = 'sensor.uzmz_water_meter_water_next_price_change' -%}
+        💡 {{ states('sensor.uzmz_water_meter_water_top_up_advice') }}
+        {%- if states(change) not in ['unknown', 'unavailable'] %}
+
+        📅 Your B${{ '%.2f' % state_attr(change, 'price_now') }} units run out around
+        {{ as_datetime(states(change)).strftime('%-d %b') }}, then B${{ '%.2f' % state_attr(change, 'next_price') }}/m³.
+        {%- endif %}
   - type: grid
     cards:
     - type: heading

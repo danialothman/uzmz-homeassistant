@@ -160,6 +160,8 @@ Entity IDs are generated from the device and sensor names. These are the default
 | `sensor.uzmz_electric_meter_electric_topped_up_this_month` | `sensor.uzmz_water_meter_water_topped_up_this_month` | B$ topped up this calendar month (see [Top-up prices](#top-up-prices)) |
 | `sensor.uzmz_electric_meter_electric_top_up_price` | `sensor.uzmz_water_meter_water_top_up_price` | The price per kWh / m³ your next top-up buys at |
 | `sensor.uzmz_electric_meter_electric_top_up_left_at_this_price` | `sensor.uzmz_water_meter_water_top_up_left_at_this_price` | B$ you can still top up at that price this month (none in the last band) |
+| `sensor.uzmz_electric_meter_electric_top_up_advice` | `sensor.uzmz_water_meter_water_top_up_advice` | The same in one sentence, e.g. "Up to B$6.00 more this month buys 54.54 m³ at B$0.11/m³; above that, B$0.44/m³." |
+| `sensor.uzmz_electric_meter_electric_next_price_change` | `sensor.uzmz_water_meter_water_next_price_change` | When the units you're using now run out and the next price starts, at your last 7 days' average use. Attributes: `price_now`, `next_price`, `units_at_price_now`, `daily_use`. Unknown if everything left costs the same |
 
 The integration also has `sensor.uzmz_integration_last_refresh` (last successful sync) and `sensor.uzmz_integration_next_refresh`.
 
@@ -208,7 +210,15 @@ Your balance is what your remaining units cost, and USMS uses the oldest units f
 - A **top-up** (units and balance up by more than your usage explains) adds units at the prices that month's top-ups so far give them. UZMZ only sees a top-up at the next sign-in. A top-up on the USMS website or app ends UZMZ's session, so that's within the hour with automatic sign-in on.
 - When it first starts, or if its figures no longer match USMS's balance, it works the prices out from the balance per unit.
 
-The **top-up planner** sensors (in the [table above](#sensors)) show what you've topped up this month, the price your next top-up starts at, and how much more you can top up at that price. They're unknown until UZMZ has seen a top-up this month, or from the 1st. To try other amounts, the unofficial [USMS Calculator](https://usmscalculator.brunei.app/topup) works the same way.
+The **top-up planner** sensors (in the [table above](#sensors)) show what you've topped up this month, the price your next top-up starts at, and how much more you can top up at that price; **Top-up Advice** says it in one sentence. They know this month's price once UZMZ has seen a top-up this month, or from the 1st. **Next Price Change** works from the units you already have, so it's known straight away: for example, when your cheap water runs out and the B$0.44 units start.
+
+What this means in practice:
+
+- **Top up every month.** Each month's cheapest units (the first B$6 of electricity and of water) can only be bought that month.
+- **Water: B$6 a month** buys 54.54 m³ at B$0.11, enough for most houses. More than that in a month costs four times as much.
+- **Electricity:** the first B$118 in a month buys 2,000 kWh at B$0.01–0.08; after that it's B$0.10, then B$0.12. If you can, spread big top-ups over months rather than buying several months' worth at once.
+
+The [top-up reminder](#top-up-reminder) automation tells you near the end of the month if the cheapest units are still unbought. To try other amounts, the unofficial [USMS Calculator](https://usmscalculator.brunei.app/topup) works the same way.
 
 **After a top-up**, the readings don't include it until the next sign-in. To sign in straight away, go to **Settings** → **Devices & Services** → **UZMZ** → ⋮ → **Reconfigure** and solve the captcha.
 
@@ -257,7 +267,8 @@ You then get daily, weekly and monthly usage and spend. The costs follow the tar
   - **Sync now**: a button for an immediate update.
 - **Electric and Water**:
   - **Balance gauge**: red and yellow at the USMS SMS-alert levels.
-  - **Readings**: remaining units, days left, meter status, the USMS reading date, and the [top-up planner](#top-up-prices).
+  - **Readings**: remaining units, days left, meter status and the USMS reading date.
+  - **Top-up tip**: the [top-up advice](#top-up-prices), and when your current price runs out.
 - **Usage**:
   - **Daily charts**: kWh and m³ used per day.
   - **Balance charts**: 30-day electric and water balance.
@@ -321,6 +332,36 @@ automation:
             USMS hasn't posted new {{ trigger.id }} usage in
             {{ states('sensor.uzmz_' ~ trigger.id ~ '_meter_' ~ trigger.id ~ '_usage_updated') | as_datetime | relative_time }}.
             Balances are estimates until it catches up.
+```
+
+### Top-up reminder
+
+From the 25th, a daily nudge if this month's cheapest units haven't been bought yet: the first B$6 of water (B$0.11/m³) or of electricity (B$0.01/kWh). It stops once you top up. Replace `notify.mobile_app_your_phone` with your notify service.
+
+```yaml
+automation:
+  - alias: "UZMZ top-up reminder"
+    triggers:
+      - trigger: time
+        at: "19:00:00"
+    conditions:
+      - condition: template
+        value_template: "{{ now().day >= 25 }}"
+      - condition: template
+        value_template: >-
+          {{ states('sensor.uzmz_water_meter_water_top_up_price') | float(0) == 0.11
+             or states('sensor.uzmz_electric_meter_electric_top_up_price') | float(0) == 0.01 }}
+    actions:
+      - action: notify.mobile_app_your_phone
+        data:
+          title: "UZMZ — Cheapest top-up still available"
+          message: >-
+            {% if states('sensor.uzmz_water_meter_water_top_up_price') | float(0) == 0.11 %}
+            Water: {{ states('sensor.uzmz_water_meter_water_top_up_advice') }}
+            {% endif %}
+            {% if states('sensor.uzmz_electric_meter_electric_top_up_price') | float(0) == 0.01 %}
+            Electric: {{ states('sensor.uzmz_electric_meter_electric_top_up_advice') }}
+            {% endif %}
 ```
 
 ### Daily report
