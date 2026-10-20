@@ -126,7 +126,7 @@ Go to **Settings** → **Devices & Services** → **UZMZ** → **Configure** to 
 
 ## Privacy & security
 
-UZMZ only talks to the USMS website, over HTTPS with certificate checks. There is no other server, no telemetry and no analytics.
+UZMZ only talks to the USMS website, over HTTPS with certificate checks. There is no other server, no telemetry and no analytics. Its requests say what they are: the User-Agent is `UZMZ/<version>` with a link to this repository, so USMS can tell the traffic apart and knows where to get in touch.
 
 What is stored, in Home Assistant's own configuration storage (`config/.storage/core.config_entries`), like every other integration:
 

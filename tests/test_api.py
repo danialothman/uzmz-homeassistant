@@ -1,11 +1,20 @@
 """Tests for the USMS client against synthetic pages shaped like the live site."""
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from uzmz import api
-from uzmz.const import ELEM_CAPTCHA_ERROR, FORM_CAPTCHA, FORM_PASSWORD, FORM_USERNAME
+from uzmz.const import (
+    ELEM_CAPTCHA_ERROR,
+    FORM_CAPTCHA,
+    FORM_PASSWORD,
+    FORM_USERNAME,
+    USER_AGENT,
+    VERSION,
+)
 
 BASE_URL = "https://usms.example/SmartMeter/"
 
@@ -483,3 +492,18 @@ def test_login_form_downgrade_to_http_is_refused(client):
 )
 def test_captcha_content_type_is_limited_to_images(header, expected):
     assert api._captcha_content_type(header) == expected
+
+
+# ----- identification -----
+
+
+def test_requests_say_they_come_from_uzmz():
+    c = api.USMSClient(BASE_URL)
+    assert c.session.headers["User-Agent"] == USER_AGENT
+    assert USER_AGENT.startswith(f"UZMZ/{VERSION} ")
+    assert "github.com/danialothman/uzmz-homeassistant" in USER_AGENT
+
+
+def test_version_matches_manifest():
+    manifest = Path(__file__).parents[1] / "custom_components" / "uzmz" / "manifest.json"
+    assert json.loads(manifest.read_text(encoding="utf-8"))["version"] == VERSION

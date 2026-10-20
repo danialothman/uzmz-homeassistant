@@ -37,6 +37,7 @@ from .const import (
     FORM_VIEWSTATE,
     IMG_ELECTRIC,
     IMG_WATER,
+    USER_AGENT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ class USMSClient:
         # live session: USMS serves the login page there and ends the session.
         self.main_url = base_url + "MainPage"
         self.session = requests.Session()
+        self.session.headers["User-Agent"] = USER_AGENT
         # Restore under the site's host so cookies the server sets later
         # (USMS issues a new session id at login) replace these instead of
         # sitting alongside them as duplicates.
