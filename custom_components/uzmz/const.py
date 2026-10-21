@@ -1,13 +1,18 @@
 """Constants for the UZMZ integration."""
 
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 DOMAIN = "uzmz"
+# USMS times are Brunei time. Built once at import: ZoneInfo reads the
+# timezone database from disk the first time, which mustn't happen in the
+# event loop.
+BRUNEI_TZ = ZoneInfo("Asia/Brunei")
 # Config entry title. Never include the IC number: titles appear in the UI,
 # in log messages and in notifications.
 ENTRY_TITLE = "UZMZ"
 # Keep in step with manifest.json (a test checks).
-VERSION = "1.9.0"
+VERSION = "1.9.1"
 # Sent with every request, so USMS can see what the traffic is and who to
 # contact, rather than a generic HTTP library's default.
 USER_AGENT = f"UZMZ/{VERSION} (Home Assistant integration; +https://github.com/danialothman/uzmz-homeassistant)"

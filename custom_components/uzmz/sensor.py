@@ -3,7 +3,6 @@
 import logging
 from datetime import date, datetime
 from typing import Any, Dict, Optional
-from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -17,6 +16,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    BRUNEI_TZ,
     DOMAIN,
     ICON_ELECTRIC,
     ICON_WATER,
@@ -345,7 +345,7 @@ class UZMZSensor(CoordinatorEntity, SensorEntity):
                 except ValueError:
                     _LOGGER.warning("Could not parse timestamp: %s", value)
                     return None
-            return dt.replace(tzinfo=ZoneInfo("Asia/Brunei"))
+            return dt.replace(tzinfo=BRUNEI_TZ)
 
         return value
 
