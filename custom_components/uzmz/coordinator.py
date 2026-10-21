@@ -3,7 +3,6 @@
 import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Optional
-from zoneinfo import ZoneInfo
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -15,6 +14,7 @@ from homeassistant.components.persistent_notification import async_create, async
 from .api import InvalidCredentials, SessionExpired, USMSClient, USMSError
 from .const import (
     AUTO_SIGN_IN_DELAY,
+    BRUNEI_TZ,
     CONF_AUTO_SIGN_IN_BLOCKED,
     CONF_AUTO_SIGN_IN_TRIED,
     CONF_BASE_URL,
@@ -73,7 +73,6 @@ UNSUPPORTED_METERS_NOTIFICATION_ID = "uzmz_unsupported_meters"
 ISSUES_URL = "https://github.com/danialothman/uzmz-homeassistant/issues"
 MAX_FAILURES_BEFORE_NOTIFY = 3
 FAILURE_RETRY_INTERVAL = timedelta(minutes=5)
-BRUNEI_TZ = ZoneInfo("Asia/Brunei")
 
 
 class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
