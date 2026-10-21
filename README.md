@@ -21,7 +21,7 @@ A Home Assistant custom integration for monitoring prepaid electric and water me
 
 You need Home Assistant with [HACS](https://hacs.xyz/docs/use/) installed, and your USMS website login.
 
-1. **Install:** click [![Open UZMZ in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danialothman&repository=uzmz-homeassistant&category=integration) → **Add**, then **Download**.
+1. **Install:** click [![Open UZMZ in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danialothman&repository=uzmz-homeassistant&category=integration), then **Download**. Or search for **UZMZ** in HACS.
 2. **Restart** Home Assistant (**Settings** → ⋮ → **Restart Home Assistant**).
 3. **Add UZMZ:** click [![Add the UZMZ integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=uzmz)
 4. **Sign in** with your USMS IC number and password, and turn on **Remember password** (see [why](#remember-password)). Type the captcha if USMS shows one.
@@ -35,12 +35,11 @@ Then see [what to expect on the first day](#what-to-expect-on-the-first-day).
 
 [![Open UZMZ in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danialothman&repository=uzmz-homeassistant&category=integration)
 
-The button opens UZMZ in your own Home Assistant's HACS. Or add it by hand:
+UZMZ is in the HACS default list. The button opens it in your own Home Assistant's HACS, or:
 
-1. In Home Assistant, open **HACS** → ⋮ → **Custom repositories**.
-2. Add `https://github.com/danialothman/uzmz-homeassistant` with the type **Integration**.
-3. Search for **UZMZ Utility Meter Monitor** in HACS and download it.
-4. Restart Home Assistant.
+1. In Home Assistant, open **HACS** and search for **UZMZ Utility Meter Monitor**.
+2. Open it and click **Download**.
+3. Restart Home Assistant.
 
 ### Manual
 
