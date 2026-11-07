@@ -98,14 +98,23 @@ automation:
       - trigger: persistent_notification
         notification_id: uzmz_reauth_required
         update_type: added
+    variables:
+      captcha: "{{ 'USMS asked for a captcha' in trigger.notification.message }}"
     actions:
       - action: notify.mobile_app_your_phone
         data:
-          title: "UZMZ — Sign-in required"
-          message: "The USMS session ended (this happens when you sign in on the USMS website or app). Open Home Assistant and solve the captcha to resume meter readings."
+          title: "{{ 'UZMZ — Captcha needed' if captcha else 'UZMZ — Sign-in required' }}"
+          message: >-
+            {% if captcha %}UZMZ tried to sign in again by itself, but USMS asked for a
+            captcha, so it couldn't. Open Home Assistant, choose Reconfigure on UZMZ and
+            sign in to resume meter readings.{% else %}The USMS session ended (this happens
+            when you sign in on the USMS website or app). Open Home Assistant and sign in
+            again to resume meter readings.{% endif %}
           data:
             url: /config/integrations/integration/uzmz
 ```
+
+When [automatic sign-in](#automatic-sign-in) is stopped by a captcha, the push says so ("Captcha needed"), so you know UZMZ won't sign in by itself this time.
 
 ### Automatic sign-in
 
