@@ -400,6 +400,8 @@ UZMZ is tested with one USMS account that has one electric and one water meter, 
 
 If you need either, please [open an issue](https://github.com/danialothman/uzmz-homeassistant/issues). For extra meters, a screenshot of the USMS home page with your name, IC number and account details blurred helps a lot: UZMZ has never seen that layout.
 
+**Don't run UZMZ alongside another USMS integration** (such as [HA-USMS](https://github.com/azsaurr/ha_usms)) on the same USMS account. USMS allows one session per account, so each one's sign-in ends the other's, and both keep losing their readings.
+
 ## Troubleshooting
 
 - **Invalid credentials**: check that you can log in on the USMS website with the same IC number and password. Stop after a couple of failures, because USMS locks the account after 5.
