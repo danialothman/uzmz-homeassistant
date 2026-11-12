@@ -228,6 +228,8 @@ What this means in practice:
 
 The [top-up reminder](#top-up-reminder) automation tells you near the end of the month if the cheapest units are still unbought. To try other amounts, the unofficial [USMS Calculator](https://usmscalculator.brunei.app/topup) works the same way.
 
+The pricing maths (the bands, splitting top-ups, and using units oldest first) is [formally proven in Lean](verification/), against these real figures too. The proofs also record where USMS doesn't follow it: November's water.
+
 **After a top-up**, the readings don't include it until the next sign-in. To sign in straight away, go to **Settings** → **Devices & Services** → **UZMZ** → ⋮ → **Reconfigure** and solve the captcha.
 
 ## Helper sensors (optional)

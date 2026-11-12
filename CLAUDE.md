@@ -24,6 +24,7 @@ hacs.json            - HACS metadata
 LICENSE              - MIT
 custom_components/uzmz/brand/ - Icons (HACS reads these; original design, no USMS branding)
 tests/               - pytest suite for api.py (no HA needed)
+verification/        - Lean 4 + Mathlib proofs of the prepaid pricing model (Tariff, Layers, RealData); not shipped; CI: .github/workflows/lean.yml
 .github/workflows/validate.yml - hassfest, HACS and tests
 ```
 
@@ -51,6 +52,7 @@ tests/               - pytest suite for api.py (no HA needed)
 
 - Tests: `pytest` (`pip install -r requirements_test.txt`) runs `tests/test_api.py`, which covers the USMS client (login stages, errors, parsing) against synthetic pages, without Home Assistant
 - CI (`.github/workflows/validate.yml`): hassfest, HACS validation and the tests on every push and PR, plus weekly
+- Proofs: `cd verification && lake exe cache get && lake build` (needs elan). They model `usage.py`'s tariff and layer maths; if you change that maths, update `verification/` to match and keep it `sorry`-free (`#print axioms` should show only propext, Classical.choice, Quot.sound)
 - No build system
 - No `pyproject.toml` or `setup.py`
 - End-to-end testing is manual against a live HA instance or with `scripts/live_test.py`

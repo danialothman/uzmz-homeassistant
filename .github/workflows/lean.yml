@@ -1,0 +1,22 @@
+name: Lean proofs
+
+on:
+  push:
+    branches: [main]
+    paths: ["verification/**", ".github/workflows/lean.yml"]
+  pull_request:
+    paths: ["verification/**", ".github/workflows/lean.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Lean proofs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: leanprover/lean-action@ba3fdfe5c4476c925da13bf11a005ddb47e47aee # v1.7.1
+        with:
+          lake-package-directory: verification
+          build: true
+          test: false
+          lint: false
