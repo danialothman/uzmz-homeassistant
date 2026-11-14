@@ -12,7 +12,7 @@ BRUNEI_TZ = ZoneInfo("Asia/Brunei")
 # in log messages and in notifications.
 ENTRY_TITLE = "UZMZ"
 # Keep in step with manifest.json (a test checks).
-VERSION = "1.9.1"
+VERSION = "1.10.0b1"
 # Sent with every request, so USMS can see what the traffic is and who to
 # contact, rather than a generic HTTP library's default.
 USER_AGENT = f"UZMZ/{VERSION} (Home Assistant integration; +https://github.com/danialothman/uzmz-homeassistant)"
