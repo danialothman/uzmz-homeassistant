@@ -12,6 +12,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.components.persistent_notification import async_create, async_dismiss
 
 from .api import InvalidCredentials, SessionExpired, USMSClient, USMSError
+from .usage_statistics import async_has_history, async_publish
 from .const import (
     AUTO_SIGN_IN_DELAY,
     BRUNEI_TZ,
@@ -72,6 +73,8 @@ AUTO_SIGN_IN_NOTIFICATION_ID = "uzmz_auto_sign_in"
 UNSUPPORTED_METERS_NOTIFICATION_ID = "uzmz_unsupported_meters"
 ISSUES_URL = "https://github.com/danialothman/uzmz-homeassistant/issues"
 MAX_FAILURES_BEFORE_NOTIFY = 3
+# Days of Daily report written to the statistics the first time.
+HISTORY_DAYS = 30
 FAILURE_RETRY_INTERVAL = timedelta(minutes=5)
 
 
@@ -102,6 +105,8 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
         self._auto_sign_in_timer: Optional[CALLBACK_TYPE] = None
         self._auto_sign_in_error: Optional[str] = None
         self._meters_checked = False
+        # Meters whose statistics have history (checked once per start).
+        self._history_ready: set[str] = set()
         self.last_successful_refresh: Optional[datetime] = None
         self.last_attempt_time: Optional[datetime] = None
 
@@ -308,6 +313,7 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
                     "approximate": anchor["approximate"] or window_start(anchor, today)[1],
                 }
             )
+            await self._async_publish_history(meter, path, usage_now, current.get("rate"), today)
 
         return {
             CONF_USAGE_ANCHORS: anchors,
@@ -318,6 +324,32 @@ class UZMZDataUpdateCoordinator(DataUpdateCoordinator):
             CONF_TOP_UP_SEEN: top_up_seen,
             CONF_FRESH_SESSION: fresh and unanchored,
         }
+
+    async def _async_publish_history(
+        self, meter: str, path: str, usage_now: Dict[str, float], price: Optional[float], today: date
+    ) -> None:
+        """Write the meter's hours to the statistics; never fails the update.
+
+        The first time, the last HISTORY_DAYS of the Daily report go in too.
+        """
+        usage = dict(usage_now)
+        if meter not in self._history_ready:
+            try:
+                if not await async_has_history(self.hass, meter):
+                    older = await self.hass.async_add_executor_job(
+                        self.client.fetch_usage, path, today - timedelta(days=HISTORY_DAYS), today, False
+                    )
+                    usage = {**older, **usage_now}
+                self._history_ready.add(meter)
+            except SessionExpired:
+                raise
+            except USMSError as err:
+                _LOGGER.warning("Could not read USMS %s usage history: %s", meter, err)
+        hours = self.client.hourly_usage.get(path) if meter == "electric" else None
+        try:
+            await async_publish(self.hass, meter, usage, hours, price)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Could not write UZMZ %s usage statistics", meter)
 
     async def _async_fetch_top_ups(
         self, meter: str, path: str, today: date
