@@ -252,16 +252,24 @@ The counters start at 0 and fill in from then on. Days left needs about a day of
 
 ### Energy dashboard
 
-With the helper sensors installed, go to **Settings** → **Dashboards** → **Energy** and add:
+UZMZ writes its own usage and cost statistics (v1.10.0 onwards), at the hours the usage actually happened. USMS sometimes posts readings hours or a day late. Home Assistant's own counters can only add usage at the moment it's noticed, so a late day would show a dip and the next day a spike. UZMZ's statistics put it back where it belongs. Go to **Settings** → **Dashboards** → **Energy** and add:
 
 - **Electricity grid**:
-  - **Grid consumption**: `sensor.uzmz_electric_consumption`
-  - **Cost**: choose **Use an entity tracking the total costs**, then `sensor.uzmz_electric_cost`
+  - **Grid consumption**: **UZMZ Electric Usage** (`uzmz:electric_consumption`)
+  - **Cost**: choose **Use an entity tracking the total costs**, then **UZMZ Electric Cost** (`uzmz:electric_cost`)
 - **Water consumption**:
-  - **Consumption**: `sensor.uzmz_water_consumption`
-  - **Cost**: `sensor.uzmz_water_cost`
+  - **Consumption**: **UZMZ Water Usage** (`uzmz:water_consumption`)
+  - **Cost**: **UZMZ Water Cost** (`uzmz:water_cost`)
 
-You then get daily, weekly and monthly usage and spend. The costs follow the tariff, because they come from the balance itself rather than a fixed price.
+You then get hourly, daily, weekly and monthly usage and spend. The costs follow the [top-up prices](#top-up-prices) of the units being used.
+
+> **Use these instead of the helper sensors' counters, not as well.** If you added `sensor.uzmz_electric_consumption` (or the water or cost ones) to the Energy dashboard before, remove them, or your usage counts twice. The helper sensors keep working for everything else.
+
+How the hours are worked out:
+
+- **Electricity:** today's hours come from USMS's Hourly report, updated as USMS posts them. USMS's Hourly report only ever shows today. So if USMS posts part of a day after midnight, UZMZ makes that day up to USMS's daily total by spreading the missing usage evenly over the hours that had none. The day's total is right; the split within those hours is an estimate.
+- **Water:** USMS only reports water per day, so each day is spread evenly over its hours, usually a day or two late.
+- **First start:** UZMZ fills in the last 30 days from USMS's Daily report, one day at a time, spread evenly over each day. Older history stays with the helper sensors, if you had them.
 
 ![Energy dashboard with UZMZ electricity and water](docs/images/energy-dashboard.png)
 
@@ -430,3 +438,4 @@ Issues and pull requests are welcome at [github.com/danialothman/uzmz-homeassist
 
 - Based on the original UZMZ Python script for utility meter monitoring.
 - Thanks to [USMS Calculator](https://usmscalculator.brunei.app/) by brunei.app for explaining how prepaid top-up pricing works: the tariff bands apply to what you top up each month, with earlier top-ups using the cheaper blocks first. That explanation is the basis of UZMZ's [top-up prices](#top-up-prices) (v1.8.0 onwards), which were then checked against real USMS top-ups and balances. UZMZ doesn't use their code or call their service.
+- Thanks to [HA-USMS](https://github.com/azsaurr/ha_usms) by azsaurr, whose import of USMS's history as Home Assistant statistics showed the way to an accurate Energy dashboard. UZMZ's [usage statistics](#energy-dashboard) (v1.10.0 onwards) are its own implementation.

@@ -125,6 +125,9 @@ class USMSClient:
         # Meter cards per type on the last home page read ("electric", "water",
         # or "other" for a type UZMZ doesn't know); only one of each is shown.
         self.meter_counts: Dict[str, int] = {}
+        # Today's Hourly report rows from the last fetch_usage, per usage path
+        # (row n is the hour ending at n:00).
+        self.hourly_usage: Dict[str, Dict[int, float]] = {}
         # The coordinator's keep-alive and data fetch can overlap in the
         # executor; requests.Session is not safe for concurrent use.
         self._lock = threading.Lock()
@@ -283,6 +286,9 @@ class USMSClient:
                     # Nothing posted for today yet (every night after midnight).
                     rows = []
                 usage[today.isoformat()] = round(sum(value for _, value in rows), 3)
+                self.hourly_usage[usage_path] = {
+                    int(label): value for label, value in rows if label.strip().isdigit()
+                }
         return usage
 
     def fetch_top_ups(self, usage_path: str, start: dt.date, today: dt.date) -> list[Dict[str, Any]]:

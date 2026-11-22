@@ -216,7 +216,7 @@ views:
     - type: statistics-graph
       title: Electricity used per day
       entities:
-      - entity: sensor.uzmz_electric_consumption
+      - entity: uzmz:electric_consumption
         name: Electric
       chart_type: bar
       period: day
@@ -227,7 +227,7 @@ views:
     - type: statistics-graph
       title: Water used per day
       entities:
-      - entity: sensor.uzmz_water_consumption
+      - entity: uzmz:water_consumption
         name: Water
       chart_type: bar
       period: day

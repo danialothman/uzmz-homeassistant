@@ -401,6 +401,8 @@ def test_usage_combines_daily_and_hourly_reports(client):
     assert daily["cboDateFrom_Raw"] == "1791417600000"  # 2026-10-08
     assert daily["cboDateTo$State"] == '{"rawValue":"1791504000000"}'  # 2026-10-09, not today
     assert client.requests[3][2]["data"]["cboType_VI"] == "3"
+    # Today's hours are kept too, for the statistics.
+    assert client.hourly_usage["Report/UsageHistory?p=RUxFQw=="] == {1: 3.92, 2: 4.063, 3: 1000.5}
 
 
 def test_daily_only_meter_skips_hourly(client):
@@ -441,6 +443,7 @@ def test_no_hourly_data_yet_counts_as_nothing_today(client):
         "Report/UsageHistory?p=x", api.dt.date(2026, 10, 11), api.dt.date(2026, 10, 12), hourly=True
     )
     assert usage == {"2026-10-11": 126.116, "2026-10-12": 0.0}
+    assert client.hourly_usage["Report/UsageHistory?p=x"] == {}
 
 
 def test_no_daily_data_is_still_an_error(client):
